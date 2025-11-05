@@ -1,6 +1,6 @@
-# 🤖 Upwork AI Automation System
+﻿# 🤖 Upwork AI Automation System
 
-**Kompletan automatizovan sistem za Upwork sa AI-powered chat responses, cover letter generisanjem i job scraping-om**
+**Complete automated system for Upwork with AI-powered chat responses, cover letter generation, and job scraping**
 
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![Node.js](https://img.shields.io/badge/node.js-16+-green.svg)
@@ -18,53 +18,53 @@
 
 ---
 
-## �📋 Sadržaj
+## �📋 Table of Contents
 
-- [Šta sistem radi](#-šta-sistem-radi)
-- [Instalacija](#-instalacija)
-- [3 Glavna n8n Workflow-a](#-3-glavna-n8n-workflow-a)
+- [What This System Does](#-šta-sistem-radi)
+- [Installation](#-Installation)
+- [3 Main n8n Workflows](#-3-glavna-n8n-workflow-a)
 - [Chat AI Assistant](#-chat-ai-assistant)
 - [Cover Letter Generator](#-cover-letter-generator)
 - [Job Scraper](#-job-scraper)
 - [ML Phase Detection](#-ml-phase-detection)
 - [Response Generation Modes](#-response-generation-modes)
-- [Konfiguracija](#%EF%B8%8F-konfiguracija)
+- [Configuration](#%EF%B8%8F-Configuration)
 - [Troubleshooting](#-troubleshooting)
-- [Struktura Projekta](#-struktura-projekta)
+- [Project Structure](#-struktura-projekta)
 - [Legal Disclaimer](#-legal-disclaimer)
 
 ---
 
-## 🎯 Šta sistem radi
+## 🎯 What This System Does
 
-Sistem automatizuje **sve aspekte Upwork freelancing-a**:
+The system automates **all aspects of Upwork freelancing**:
 
 ### 🤖 **1. Chat AI Assistant**
 - **Real-time chat monitoring** sa ML-powered phase detection
-- **8 faza konverzacije** (Initial Response → Contract & Start)
-- **BERT ML model** za detekciju faza (100% accuracy, 92.6% za knowledge check)
+- **8 conversation phases** (Initial Response → Contract & Start)
+- **BERT ML model** for phase detection (100% accuracy, 92.6% za knowledge check)
 - **4 response generation modes**:
-  - **Template Mode**: 3 brze opcije (~0.1s)
-  - **Hybrid Mode**: AI-enhanced personalizacija (1 opcija, ~2s)
-  - **Pure AI Mode**: Fully AI-generated (1 opcija, ~3s)  
-  - **Summary Mode**: Template + AI context summary (1 opcija, ~2s)
-- **Interactive dashboard** sa click-to-copy response opcijama
+  - **Template Mode**: 3 quick options (~0.1s)
+  - **Hybrid Mode**: AI-enhanced personalization (1 option, ~2s)
+  - **Pure AI Mode**: Fully AI-generated (1 option, ~3s)  
+  - **Summary Mode**: Template + AI context summary (1 option, ~2s)
+- **Interactive dashboard** sa click-to-copy response optionma
 
 ### 📝 **2. Cover Letter Generator**
-- **Automatsko generisanje** svakih 5 minuta
-- **AI-powered personalizacija** za svaki job
-- **Custom GPT-2 model training** na vašim podacima
-- **Database integration** - sve cover letter čuva u SQLite
+- **Automatic generation** every 5 minutes
+- **AI-powered personalization** for each job
+- **Custom GPT-2 model training** on your data
+- **Database integration** - saves all cover letters u SQLite
 
 ### 🔍 **3. Job Scraper**
-- **Automatski scraping** svakih 2 sata
-- **Chrome debug mode** bypass za Cloudflare zaštitu
-- **Database storage** sa full-text pretrakom
-- **HTML parsing** i ekstrakcija job details
+- **Automatic scraping** svakih 2 sata
+- **Chrome debug mode** bypass for Cloudflare protection
+- **Database storage** with full-text search
+- **HTML parsing** and job details extraction
 
 ---
 
-## 🚀 Instalacija
+## 🚀 Installation
 
 ### **1. Clone Repository**
 ```powershell
@@ -72,7 +72,7 @@ git clone https://github.com/NewworldProg/WorkFlow.git
 cd WorkFlow
 ```
 
-### **2. Instalacija Dependencies**
+### **2. Installation Dependencies**
 
 #### **Python Setup**
 ```powershell
@@ -100,7 +100,7 @@ cd ..
 
 #### **Chat AI Setup** (Automatski)
 ```powershell
-# Kompletna automatska instalacija chat AI sistema
+# Kompletna automatska Installation chat AI sistema
 powershell -ExecutionPolicy Bypass -File install_chat_ai_requirements.ps1
 ```
 
@@ -127,7 +127,7 @@ chrome.exe --remote-debugging-port=9223 --user-data-dir="E:\Repoi\UpworkNotif\ch
 
 ---
 
-## 🔄 3 Glavna n8n Workflow-a
+## 🔄 3 Main n8n Workflows
 
 Sistem ima **3 nezavisna workflow-a** koja orchestriraju sve funkcionalnosti:
 
@@ -403,7 +403,7 @@ Sistem podržava **4 načina generisanja odgovora** koje možete koristiti zaseb
 .\run_smart_chat_response.ps1 -Mode all
 ```
 - **Speed:** ~7-8 sekundi
-- **Output:** SVE 4 mode-a zajedno (3+1+1+1 = 6 opcija)
+- **Output:** SVE 4 mode-a zajedno (3+1+1+1 = 6 option)
 - **Prednosti:** Kompletna fleksibilnost - biraš najbolju opciju
 - **n8n Workflow:** Default mode u `n8n_chat_ai_workflow.json`
 
@@ -456,7 +456,7 @@ $env:OPENAI_API_KEY = "your-api-key-here"
 # Activate venv
 .\venv\Scripts\Activate.ps1
 
-# Train custom model na vašim podacima
+# Train custom model on your data
 python ai/training/examples/train_advanced.py
 
 # Model se čuva u:
@@ -472,7 +472,7 @@ python ai/training/examples/train_advanced.py
 ### **Usage**
 
 #### **Automatic (n8n)**
-- **Frequency:** Svakih 5 minuta
+- **Frequency:** every 5 minutes
 - **Trigger:** `n8n_ai_cover_letter_workflow.json`
 - **Action:** Generiše cover letter za najnoviji job bez cover letter-a
 
@@ -517,7 +517,7 @@ db.add_cover_letter(
 
 Glavni izazov sa Upwork scraping-om je **Cloudflare zaštita**. Naš sistem koristi **Chrome debug mode**:
 
-#### **Zašto funkcioniše:**
+#### **Why This Works:**
 1. **Chrome ostaje otvoren** u debug modu (port 9222)
 2. **Ti se logujueš ručno** i rešavaš Cloudflare challenge
 3. **Puppeteer se conectuje** na postojeću sesiju
@@ -574,7 +574,7 @@ CREATE TABLE html_snapshots (
 
 ---
 
-## ⚙️ Konfiguracija
+## ⚙️ Configuration
 
 ### **File Paths**
 
@@ -754,7 +754,7 @@ response_text = result['responses'][0]
 
 ---
 
-## 📁 Struktura Projekta
+## 📁 Project Structure
 
 ```
 UpworkNotif/
