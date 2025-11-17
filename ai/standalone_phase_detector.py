@@ -24,7 +24,8 @@ class StandalonePhaseDetector:
     #3. path to model
     #4. put database manager in var
     #5. put model in var
-    #6. print metadata info
+    #6. call PhaseDetector class to load model and its functions
+    #7. print metadata info
     def __init__(self):
         # var to hold root dir
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -90,7 +91,7 @@ class StandalonePhaseDetector:
 
         # from database data make one line string from sender and text objects
         context = "\n".join([f"{m['sender_type']}: {m['text']}" for m in messages])
-        # limit context
+        # limit context to 100 characters for logging
         context_preview = context[:100] + "..." if len(context) > 100 else context
         
         print(f"[CONTEXT] {len(messages)} messages, {len(context)} chars")
@@ -122,6 +123,7 @@ class StandalonePhaseDetector:
                 'messages_count': len(messages),
                 'timestamp': datetime.now().isoformat()
             }
+        # log failure
         else:
             return {
                 'success': False,

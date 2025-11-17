@@ -8,6 +8,8 @@ import os
 import json
 import argparse
 from datetime import datetime
+import torch
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
 
 # Set UTF-8 encoding
 if sys.platform == "win32":
@@ -17,11 +19,93 @@ if sys.platform == "win32":
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from data.chat_database_manager import ChatDatabase
 
-#class to hold templates and generate responses based on phase
+# class that connects to database initializes templates, and implements AI chat response generation
 class SmartChatResponse:
     """Simple phase-based response generator with BERT AI"""
 
+    # class for AI model GPT-2 text generation
+    # it has __init__ and generate_single_response functions
+    # __init__ loads model and tokenizer
+    # generate_single_response generates text based on prompt
+    class ChatGPT2Generator:
+        """Simplified GPT-2 generator integrated into SmartChatResponse"""
+        # loads components for GPT-2 model
+        # 1. set model path based on trained model if available else use base GPT-2
+        # 2. load tokenizer from model path
+        # 3. load model from model path
+        # 4. set pad token if not set
+        # 5. set hardware device to choose CUDA if available else CPU
+        # 6. load model to hardware device and set to eval mode
+        def __init__(self):
+            print("Loading GPT-2...")
+            # Check for trained model first
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            trained_model_path = os.path.join(project_root, "ai", "trained_models", "final_chat_model", "trained_chat_model_1.0")
+            # if trained model is found set model_path to it
+            if os.path.exists(trained_model_path):
+                print("🎯 Using TRAINED model for better responses")
+                model_path = trained_model_path
+            # else set model_path to base GPT-2
+            else:
+                print("⚠️ Trained model not found, using base GPT-2")
+                model_path = "gpt2"
+            
+            # Load tokenizer
+            self.tokenizer = GPT2Tokenizer.from_pretrained(model_path)
+            # load model
+            self.model = GPT2LMHeadModel.from_pretrained(model_path)
+            
+            # Set pad token
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            
+            # Set hardware device to use CUDA if available else CPU
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            # load model to hardware device
+            self.model.to(self.device)
+            # set model to eval mode
+            self.model.eval()
+            print("✅ GPT-2 Ready")
+        # function to generate response
+        # takes prompt and max_length as input
+        # 1. encode prompt using tokenizer and move to hardware device
+        # 2. generate outputs with model.generate using parameters for text generation
+        # 3. decode generated outputs to text
+        # 4. simple cleanup to ensure proper ending punctuation     
+        def generate_single_response(self, prompt, max_length=80):
+            """Simple GPT-2 text generation"""
+            try:
+                # tokenize prompt and move to hardware device
+                inputs = self.tokenizer.encode(prompt, return_tensors='pt').to(self.device)
+                # generate outputs with the initialized model
+                # use torch.no_grad because no training is happening only inference
+                with torch.no_grad():
+                    outputs = self.model.generate(
+                        inputs,
+                        max_length=inputs.shape[1] + max_length,
+                        temperature=0.7,
+                        do_sample=True,
+                        top_p=0.9,
+                        pad_token_id=self.tokenizer.eos_token_id,
+                        no_repeat_ngram_size=2
+                    )
+                # decode generated outputs to text
+                generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+                # extract response part
+                response = generated_text[len(prompt):].strip()
+                
+                # Simple cleanup
+                if not response.endswith(('.', '!', '?')) and len(response) > 10:
+                    response = response.rsplit(' ', 1)[0] + '.'
+                
+                return response[:150] if len(response) > 150 else response
+                
+            except Exception as e:
+                print(f"GPT-2 Error: {e}")
+                return "Thank you for your message."
     # templates dict for each phase (detected by BERT AI)
+    # NOTE: Only 8 phases match trained BERT model - extras removed for clarity
+    # and one fallback 'general_inquiry' added
     TEMPLATES = {
         'initial_response': [
             "Thank you for reaching out! I'm very interested. Could you tell me more about the project?",
@@ -63,40 +147,17 @@ class SmartChatResponse:
             "Thank you! I've accepted and will begin immediately.",
             "Great! Contract signed. I'm diving into the first batch now."
         ],
-        'scope_clarification': [
-            "Thank you! Could you clarify: which language(s) and how many words per week?",
-            "Great! What language and what's the expected weekly volume?",
-            "Perfect! What language? How many articles per week?"
-        ],
-        'timeline_discussion': [
-            "Perfect! When would you need the first delivery?",
-            "Got it! What's your preferred timeline for completion?",
-            "Understood! When is the deadline? I can start immediately."
-        ],
-        'requirements_discussion': [
-            "Could you share the content structure requirements? (H1, H2s, SEO, etc.)",
-            "Do you have specific formatting requirements?",
-            "What structure do you prefer for the articles?"
-        ],
-        'project_acceptance': [
-            "Contract accepted! Starting work now. You'll have it by the deadline.",
-            "Thank you! I've accepted and will begin immediately.",
-            "Great! Contract signed. I'm diving into the first batch now."
-        ],
-        'follow_up': [
-            "Just checking in - do you need any clarifications?",
-            "Let me know if you have any questions!",
-            "Feel free to reach out if you need anything!"
-        ],
+        # Fallback for unknown phases or errors
         'general_inquiry': [
             "Could you provide more details about what you're looking for?",
             "I'd be glad to assist! Can you clarify what you need?",
             "Let me know the specifics and I'll help!"
         ]
     }
-
-
-    # initialize database manager
+    # funtion that initialises variables
+    #1. var to hold project root
+    #2. var to hold path to database
+    #3. var for database
     def __init__(self):
         """Initialize response generator (no phase detection)"""
         # var to hold project root
@@ -116,33 +177,46 @@ class SmartChatResponse:
         print("="*60 + "\n")
         
         print("="*60 + "\n")
-    # get conversation context from database or retrun empty
+    # funtion that takes latest session_id and max_messages as input
+    # takes latest session from database by session_id search
+    # and returns context which is dictionary of messages key sender_type and text value
+    # and session_id
     def get_context(self, session_id, max_messages=10):
         """Get conversation context from database"""
+        # check for latest session
         if session_id == "latest":
+            # get latest session wtih db manager function with var for database
             latest = self.db.get_latest_session()
+            # put latest session id in session_id variable
             session_id = latest['session_id'] if latest else None
-        
+        # if there are no session_id return empty
         if not session_id:
             return "", None
-        # get recent messages
+        # get recent messages from database manager with session_id var earlier initialized
+        # and return messages as context limiting to max_messages var that is passed
         messages = self.db.get_recent_messages(session_id, limit=max_messages)
+        # make dictionary of messages
         context = "\n".join([f"{m['sender_type']}: {m['text']}" for m in messages])
         return context, session_id
 
     # function that takes phase as input and generates template responses based on phase
+    # takes phase and num_options as input
+    # 1. gets template responses (3) for phase if not found uses general_inquiry templates
+    # 2. returns list of template responses up to num_options or available templates
     def generate_template_response(self, phase, num_options=3):
         """Generate template responses"""
         templates = self.TEMPLATES.get(phase, self.TEMPLATES['general_inquiry'])
+        # imside template responses for phase return lesser numer => num_options or available templates
         return templates[:min(num_options, len(templates))]
     # function to save results to temp file for dashboard
+    # takes result dict as input, result is output of generate() function
     #1. var to hold temp file path
     #2. temp data structure compatible with dashboard to hold suggestions
     #3. based on result content append appropriate fields to temp_data
     def save_to_temp_file(self, result):
         """Save results to temp file for dashboard"""
         try:
-            # path to temp file
+            # var to hold temp file path
             temp_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'temp_ai_suggestions.json')
 
             # Create temp data structure compatible with dashboard to hold suggestions
@@ -153,14 +227,19 @@ class SmartChatResponse:
                 'model_used': 'bert_phase_detector',
                 'created_at': datetime.now().isoformat()
             }
-            # append temp_data with responses
-            # if smart_chat_response.generate() was set to return both template and AI append both
+            # append temp_data with results content
+            # if argument is template_response
+            # suggestion_type
+            # template_response 
+            # ai_response
             if 'template_response' in result and 'ai_response' in result:
                 # Both mode
                 temp_data['suggestion_type'] = 'both'
                 temp_data['template_response'] = result['template_response']
                 temp_data['ai_response'] = result['ai_response']
-            # else append one or the other
+            # else if argument is responses
+            # suggestion_type
+            # responses
             elif 'responses' in result:
                 # Template or AI mode
                 temp_data['suggestion_type'] = result.get('mode', 'template')
@@ -176,13 +255,19 @@ class SmartChatResponse:
             print(f"[WARN] Failed to save temp file: {e}")
 
     # function that takes phase as input and generates AI response using GPT-2
-    
+    # takes phase, context and session_id as input
+    # 1. try to import ChatGPT2Generator from ai.chat_gpt2_generator
+    # 2. puts ChatGPT2Generator in gpt2 variable
+    # 3. create detailed prompt which includes context and phase information
+    # 4. call gpt2.generate_single_response with custom_prompt
+    # 5. if successful return first response
+    # 6. else return AI failure message
     def generate_ai_response(self, phase, context, session_id):
-        """Generate AI response using GPT-2"""
+        """Generate AI response using integrated GPT-2"""
         try:
-            # 
-            from ai.chat_gpt2_generator import ChatGPT2Generator
-            gpt2 = ChatGPT2Generator()
+            # Use internal GPT-2 generator
+            if not hasattr(self, '_gpt2_generator'):
+                self._gpt2_generator = self.ChatGPT2Generator()
             
             # Create detailed prompt for better GPT-2 response
             prompt = f"""You are a professional freelancer responding to a client in an Upwork chat conversation.
@@ -212,20 +297,26 @@ Write a professional, friendly response that addresses the "{phase}" phase appro
 
 Response:"""
             
-            result = gpt2.generate_response(
-                session_id=session_id,
-                custom_prompt=prompt,
-                response_type='professional'
-            )
+            # Generate response using internal GPT-2
+            ai_response = self._gpt2_generator.generate_single_response(prompt)
             
-            if result.get('success') and result.get('responses'):
-                return result['responses'][0]
+            # Return response or error message
+            if ai_response:
+                return ai_response
             else:
-                return self.generate_template_response(phase, 1)[0]
+                return "[AI Error] GPT-2 response generation failed. Please try again or use template mode."
         except Exception as e:
             print(f"[WARN] GPT-2 failed: {e}")
-            return self.generate_template_response(phase, 1)[0]
-    
+            return f"[AI Error] GPT-2 crashed: {str(e)}. Please use template mode instead."
+    # function that generates response
+    # takes inputs ===============================================
+    # session_id from database or 'latest'
+    # mode - template, ai or both from main() argparser
+    # num_options - number of template options to generate from main() argparser
+    # =======================================================
+    # 1. Get session with pre-detected phase from database
+    # 2. extract phase and confidence from session_data that was fetched with session_id
+    # 3. Generate response based on mode (template or AI)
     def generate(self, session_id='latest', mode='template', num_options=3):
         """
         Main generation function - NEW VERSION
@@ -246,44 +337,52 @@ Response:"""
         if not session_id:
             return {'success': False, 'error': 'No session ID provided'}
         
-        # Get session with phase (NO PHASE DETECTION HERE!)
+        # get session with phase that phase detector stored in database earlier
         session_data = self.db.get_session_with_phase(session_id)
         
         if not session_data:
             return {'success': False, 'error': f'Session {session_id} not found'}
-        
+        # if phase not detected return error
         if not session_data.get('phase'):
             return {
                 'success': False, 
                 'error': 'Phase not detected yet. Run standalone phase detector first.',
                 'session_id': session_id
             }
-        
+        # extract phase and confidence from session_data that was fetched with session_id
         phase = session_data['phase']
         confidence = session_data['phase_confidence']
         
         print(f"\n[PHASE] {phase} ({confidence:.1%} confidence) - from database")
         print(f"[SESSION] {session_id}")
         
-        # Get context for AI generation (if needed)
+        # if mode is set to ai or both
         if mode in ['ai', 'both']:
+            # get context for AI generation
             messages = self.db.get_recent_messages(session_id, limit=10)
             context = "\n".join([f"{m['sender_type']}: {m['text']}" for m in messages])
+            # else return empty string because only AI uses context
         else:
             context = ""
         
-        # Generate response based on mode (NO phase detection!)
+        # Generate response based on mode
+        # if template mode
         if mode == 'template':
+            # response is generated template responses for phase
             responses = self.generate_template_response(phase, num_options)
             print(f"[MODE] Template ({len(responses)} options)")
+            # elif mode is ai
         elif mode == 'ai':
+            # response is generated AI response for phase and context
             ai_response = self.generate_ai_response(phase, context, session_id)
             responses = [ai_response]
             print(f"[MODE] AI (GPT-2)")
+            # if mode is both
         elif mode == 'both':
             template_response = self.generate_template_response(phase, 1)[0]
             ai_response = self.generate_ai_response(phase, context, session_id)
             print(f"[MODE] Both (Template + AI)")
+            # inside resulty put response and other fields
             result = {
                 'success': True,
                 'phase': phase,
@@ -295,6 +394,7 @@ Response:"""
             # Save to temp file for dashboard
             self.save_to_temp_file(result)
             return result
+        # else return error for invalid mode
         else:
             return {'success': False, 'error': f'Invalid mode: {mode}'}
         
@@ -311,20 +411,27 @@ Response:"""
         # Save to temp file for dashboard
         self.save_to_temp_file(result)
         return result
-
+# main function
+# 1. takes arguments that you pass from command line
+# 2. make result var for SmartChatResponse class instance and put arguments or defaults to generate function
+# 3. Return JSON for n8n stdout of result var
+# 5. log everything for debugging
 def main():
+    # inside main set mode and num_options, session_id, also set defaults
     """Main entry point"""
     parser = argparse.ArgumentParser(description='Smart Chat Response')
     parser.add_argument('--session-id', default='latest')
     parser.add_argument('--mode', choices=['template', 'ai', 'both'], default='template')
     parser.add_argument('--num-options', type=int, default=3)
-    
+    # inside var put all the arguments from argparser
     args = parser.parse_args()
     
     try:
+        # inside var put SmartChatResponse class instance
         generator = SmartChatResponse()
+        # feed the arguments to generate function of SmartChatResponse instance generator
         result = generator.generate(args.session_id, args.mode, args.num_options)
-        
+        # log everything for debugging
         print("\n" + "="*60)
         if result['success']:
             print(f"Phase: {result['phase']} ({result['confidence']:.1%})")

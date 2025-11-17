@@ -1,10 +1,10 @@
 {
-  "session_id": "upwork_20251112_155907",
-  "phase": "knowledge_check",
-  "confidence": 0.2913,
+  "session_id": "upwork_20251117_074749",
+  "phase": "contract_acceptance",
+  "confidence": 0.3577,
   "model_used": "bert_phase_detector",
-  "created_at": "2025-11-12T16:02:14.791753",
+  "created_at": "2025-11-17T07:48:32.231846",
   "suggestion_type": "both",
-  "template_response": "Yes, I have extensive experience with that topic. Let me show you my expertise.",
-  "ai_response": "The client should be able to understand the message and understand what is happening within the conversation\n. A good response is: \"I think I understa"
+  "template_response": "Contract accepted! Starting work now. You'll have it by the deadline.",
+  "ai_response": "1. How many hours per week do you work? 2. What are your experience? 3. Are you a full stack developer?\n2. Will you be working on a project that you k"
 }

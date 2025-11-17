@@ -110,7 +110,7 @@ The system now **automatically detects** your project location and **updates all
 │   └── 📊 chat_dashboard.html    # Generated chat dashboard
 │
 ├── 📁 ai/                        # AI & Machine Learning
-│   ├── 🧠 smart_chat_response.py # GPT-2 response generator
+│   ├── 🧠 smart_chat_response.py # Integrated GPT-2 + BERT system
 │   ├── 🎯 phase_detector.py      # BERT phase detection
 │   ├── 📁 trained_models/        # Pre-trained AI models
 │   └── 📁 training/              # Training data & scripts
@@ -884,11 +884,8 @@ response_text = result['responses'][0]
 UpworkNotif/
 ├── 📁 ai/                                    # AI Components
 │   ├── __init__.py
-│   ├── standalone_phase_detector.py          # 🆕 Standalone BERT phase detection
-│   ├── smart_chat_response.py                # 🆕 Database-driven response generator
+│   ├── smart_chat_response.py                # 🆕 Integrated GPT-2 + BERT system  
 │   ├── phase_detector.py                     # BERT phase classifier
-│   ├── chat_gpt2_generator.py                # GPT-2 response generator
-│   ├── cover_letter_generator.py             # Cover letter AI
 │   ├── train_phase_classifier.py             # BERT training script
 │   ├── phase_training_data.json              # 53 labeled conversations
 │   └── 📁 trained_models/
@@ -1146,13 +1143,13 @@ chrome.exe --remote-debugging-port=9223 --user-data-dir="chrome_profile_chat"
 ---
 
 **Author:** AI Automation System  
-**Version:** 4.0 (Optimized Architecture)  
-**Last Updated:** 2025-11-07  
+**Version:** 5.0 (Integrated AI Architecture)  
+**Last Updated:** 2025-11-17  
 **Repository:** https://github.com/NewworldProg/WorkFlow
 
-**🆕 New in v4.0:**
-- ⚡ **2x Performance**: Optimized BERT architecture (single call + database storage)
-- 🔧 **Universal Installation**: Automatic project root detection and workflow path updating
-- 📊 **Enhanced Database**: Phase storage with confidence scores and timestamps
-- 🎯 **Separated Concerns**: Standalone phase detection + database-driven responses
-- 📁 **Auto-backup**: Workflow backups created automatically during updates
+**🆕 New in v5.0:**
+- 🔧 **Simplified AI Architecture**: ChatGPT2Generator integrated into SmartChatResponse
+- ⚡ **Cleaner Code**: Removed generate_response wrapper, direct generate_single_response usage
+- 📁 **Project Restructure**: Organized into run_scripts/, scripts/, dashboard_generate/ folders
+- 🗂️ **File Cleanup**: Removed duplicate and obsolete AI components
+- 💾 **Smart Model Loading**: Automatic detection and usage of trained vs base GPT-2 models
