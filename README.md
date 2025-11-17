@@ -112,8 +112,12 @@ The system now **automatically detects** your project location and **updates all
 ├── 📁 ai/                        # AI & Machine Learning
 │   ├── 🧠 smart_chat_response.py # Integrated GPT-2 + BERT system
 │   ├── 🎯 phase_detector.py      # BERT phase detection
+│   ├── 🎓 train_chat_gpt2.py     # 🆕 Optimized GPT-2 training script
 │   ├── 📁 trained_models/        # Pre-trained AI models
-│   └── 📁 training/              # Training data & scripts
+│   ├── 📁 training_data/         # JSON training datasets
+│   │   ├── 📁 parsed_data/       # Processed training data
+│   │   └── 📁 raw_data/          # Original training files
+│   └── 📁 training/              # Training utilities & scripts
 │
 ├── 📁 data/                      # Database & Data Management
 │   ├── 🗄️ database_manager.py   # SQLite database interface
@@ -399,6 +403,197 @@ Generate & Open Dashboard (generate_dashboard_enhanced.py)
 #### **Database:**
 - **Location:** `upwork_data.db`
 - **Tables:** `jobs`, `html_snapshots`
+
+---
+
+## 🎓 GPT-2 Training System (NEW!)
+
+**Optimized architecture for training custom chat models on conversational data**
+
+### **🚀 Quick Training**
+
+```powershell
+# 1. Activate Python environment
+.\venv\Scripts\Activate.ps1
+
+# 2. Run training with auto-detection
+cd ai
+python train_chat_gpt2.py
+
+# 3. Training automatically:
+#    - Finds training data in ai/training_data/parsed_data/
+#    - Organizes ML tracking in ai/trained_models/
+#    - Saves final model with metadata
+```
+
+### **📋 Training Architecture**
+
+**Completely rewritten for v5.0** - reduced from ~500 to ~200 lines with clean classes:
+
+#### **JSONChatDataset Class**
+```python
+class JSONChatDataset(Dataset):
+    """Loads JSON chat data, validates metadata, creates tokenized examples."""
+    
+    # Key Features:
+    # ✅ Auto-finds training files if none provided  
+    # ✅ JSON validation with detailed error messages
+    # ✅ Integrated tokenization with GPT-2 tokenizer
+    # ✅ Helper methods moved into class (no global functions)
+```
+
+#### **ChatGPT2Trainer Class**
+```python  
+class ChatGPT2Trainer:
+    """Handles GPT-2 loading, training, and metadata generation."""
+    
+    # Key Features:
+    # ✅ Separated load_model() and train() methods
+    # ✅ ML tracking organization (wandb/mlruns in output dir)
+    # ✅ Returns comprehensive training metadata
+    # ✅ Automatic model saving with tokenizer
+```
+
+### **🗂️ File Structure**
+
+```
+ai/
+├── 🎓 train_chat_gpt2.py              # Main training script (200 lines)
+├── 📁 training_data/
+│   ├── 📁 parsed_data/               # JSON training files
+│   │   └── training_data_parsed.json # Auto-detected training file
+│   └── 📁 raw_data/                  # Original conversation data
+└── 📁 trained_models/                # Training output directory
+    ├── 📁 final_chat_model/          # Final trained model
+    │   └── 📁 trained_chat_model_1.0/ # Model + tokenizer + metadata
+    ├── 📁 wandb/                     # 🆕 Weights & Biases tracking
+    ├── 📁 mlruns/                    # 🆕 MLflow tracking  
+    ├── 📁 logs/                      # Training logs
+    ├── checkpoint-50/                # Training checkpoints
+    └── checkpoint-88/
+```
+
+### **⚙️ Training Configuration**
+
+**Training automatically configured with sensible defaults:**
+
+| Parameter | Default Value | Purpose |
+|-----------|---------------|---------|
+| **Model** | `gpt2` (124M params) | Base model for fine-tuning |
+| **Epochs** | `8` | Training iterations |
+| **Batch Size** | `1` | Memory-efficient for CPU |
+| **Learning Rate** | `2e-5` | Optimal for GPT-2 fine-tuning |
+| **Block Size** | `512` | Token sequence length |
+| **Save Steps** | `50` | Checkpoint frequency |
+
+**Special Tokens Added:**
+- `<|client|>` - Client messages
+- `<|freelancer|>` - Freelancer responses  
+- `<|startoftext|>` - Conversation start
+- `<|endoftext|>` - Conversation end
+
+### **🎯 Training Results**
+
+**Latest Training Run (11 conversations, 8 epochs):**
+```
+📊 Training Results:
+├─ Initial Loss: 4.01
+├─ Final Loss: 2.51 
+├─ Training Time: ~4 minutes (CPU)
+├─ Model Size: ~500MB
+├─ Vocab Size: 50,260 tokens (+ special tokens)
+└─ Success Rate: 100% (no errors)
+
+🎯 Model Output:
+├─ Location: ai/trained_models/final_chat_model/trained_chat_model_1.0/
+├─ Files: model.safetensors, config.json, training_metadata.json
+├─ Tokenizer: vocab.json, merges.txt, tokenizer_config.json
+└─ Tracking: wandb/ and mlruns/ organized in output directory
+```
+
+### **🧠 Training Data Format**
+
+**Input:** JSON file with metadata + formatted conversations:
+
+```json
+{
+  "metadata": {
+    "total_conversations": 11,
+    "processed_on": "2025-11-17T16:38:34.163996",
+    "source_file": "ai/training_data/raw_data/training_data.txt"
+  },
+  "training_conversations": [
+    {
+      "id": 1,
+      "exchange_count": 5,
+      "formatted_training_text": "<|startoftext|>\n<|freelancer|> Good Day,\n<|client|> Hello! Are you available?\n<|freelancer|> Yes I'm available\n<|endoftext|>"
+    }
+  ]
+}
+```
+
+### **🔧 Advanced Usage**
+
+#### **Custom Training Parameters**
+```python
+# Modify main() function in train_chat_gpt2.py:
+metadata = trainer.train(
+    dataset, 
+    epochs=12,        # More epochs for better learning
+    batch_size=2,     # Larger batch (requires more memory)
+    lr=1e-5          # Lower learning rate for fine-tuning
+)
+```
+
+#### **Custom Training Data**
+```python
+# Use specific training file:
+dataset = JSONChatDataset(tokenizer, "path/to/custom_data.json")
+
+# Or put file in ai/training_data/parsed_data/ for auto-detection
+```
+
+#### **Production Integration** 
+```python
+# Load trained model in other scripts:
+from transformers import GPT2LMHeadModel, GPT2Tokenizer
+
+model_path = "ai/trained_models/final_chat_model/trained_chat_model_1.0"
+model = GPT2LMHeadModel.from_pretrained(model_path)
+tokenizer = GPT2Tokenizer.from_pretrained(model_path)
+
+# Generate responses:
+inputs = tokenizer.encode(conversation_text, return_tensors="pt")
+outputs = model.generate(inputs, max_length=150, pad_token_id=tokenizer.eos_token_id)
+response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+```
+
+### **📊 ML Tracking Integration**
+
+**Organized tracking in output directory:**
+
+```
+ai/trained_models/
+├── 📊 wandb/                    # Weights & Biases experiments
+│   ├── 📁 cache/               # W&B cache files  
+│   └── 📁 runs/                # Experiment runs
+├── 📊 mlruns/                  # MLflow tracking
+│   ├── 📁 0/                   # Default experiment
+│   └── 📁 meta.yaml           # MLflow metadata
+└── 📁 final_chat_model/       # Actual trained model
+```
+
+**Environment Variables Set:**
+- `WANDB_DIR` → `ai/trained_models/wandb`
+- `MLFLOW_TRACKING_URI` → `file://ai/trained_models/mlruns`
+- `WANDB_CACHE_DIR` → `ai/trained_models/wandb/cache`
+
+**Tracking Disabled by Default:**
+```python
+TrainingArguments(
+    report_to=[]  # Disable external tracking to avoid clutter
+)
+```
 
 ---
 
@@ -886,10 +1081,17 @@ UpworkNotif/
 │   ├── __init__.py
 │   ├── smart_chat_response.py                # 🆕 Integrated GPT-2 + BERT system  
 │   ├── phase_detector.py                     # BERT phase classifier
+│   ├── train_chat_gpt2.py                    # 🆕 Optimized GPT-2 training script
 │   ├── train_phase_classifier.py             # BERT training script
 │   ├── phase_training_data.json              # 53 labeled conversations
-│   └── 📁 trained_models/
-│       └── 📁 phase_classifier_v1/           # BERT model (110M params)
+│   ├── 📁 trained_models/
+│   │   ├── 📁 phase_classifier_v1/           # BERT model (110M params)
+│   │   └── 📁 final_chat_model/              # 🆕 Custom trained GPT-2
+│   │       └── 📁 trained_chat_model_1.0/    # Model + tokenizer + metadata
+│   └── 📁 training_data/                     # 🆕 Training datasets
+│       ├── 📁 parsed_data/                   # JSON training files  
+│       │   └── training_data_parsed.json     # Auto-detected training data
+│       └── 📁 raw_data/                      # Original conversation files
 │
 ├── 📁 data/                                  # Database Components
 │   ├── chat_database_manager.py              # 🆕 Enhanced with phase storage
@@ -1143,9 +1345,16 @@ chrome.exe --remote-debugging-port=9223 --user-data-dir="chrome_profile_chat"
 ---
 
 **Author:** AI Automation System  
-**Version:** 5.0 (Integrated AI Architecture)  
+**Version:** 5.1 (Optimized GPT-2 Training Architecture)  
 **Last Updated:** 2025-11-17  
 **Repository:** https://github.com/NewworldProg/WorkFlow
+
+**🆕 New in v5.1:**
+- 🎓 **Optimized GPT-2 Training**: Complete rewrite with JSONChatDataset and ChatGPT2Trainer classes
+- 📊 **ML Tracking Organization**: wandb/mlruns folders organized in output directory
+- 🔧 **Cleaner Architecture**: Reduced from ~500 to ~200 lines with focused classes
+- 📁 **Auto-Detection**: Training files automatically found in ai/training_data/parsed_data/
+- 💾 **Comprehensive Metadata**: Training metadata with model details and performance metrics
 
 **🆕 New in v5.0:**
 - 🔧 **Simplified AI Architecture**: ChatGPT2Generator integrated into SmartChatResponse
