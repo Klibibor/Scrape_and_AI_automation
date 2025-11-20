@@ -14,12 +14,12 @@ try {
     $outputFile = "data\dashboard_$timestamp.html"
     
     # Check if database exists
-    if (-not (Test-Path "upwork_data.db")) {
+    if (-not (Test-Path "data\jobs.db")) {
         Write-Host "⚠️ Database not found, creating with sample data..."
         # Try to load existing parsed data first
         python -c "
-from data.database_manager import UpworkDatabase
-db = UpworkDatabase()
+from data.database_manager import JobDatabase
+db = JobDatabase()
 files, jobs = db.load_existing_parsed_data()
 print(f'Loaded {files} files with {jobs} jobs from existing data')
 "

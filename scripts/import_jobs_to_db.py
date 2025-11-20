@@ -13,14 +13,14 @@ if sys.platform == "win32":
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-# Import database manager file and class UpworkDatabase that holds functions
-from data.database_manager import UpworkDatabase
+# Import database manager file and class JobDatabase that holds functions
+from data.database_manager import JobDatabase
 # function to import jobs to database
 def import_jobs_to_db():
     """Import jobs from n8n previous node to database"""
     try:
         # in var put database class
-        db = UpworkDatabase()
+        db = JobDatabase()
         
         # Get latest scrape_id for linking
         import sqlite3

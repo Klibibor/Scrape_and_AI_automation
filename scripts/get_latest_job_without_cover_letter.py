@@ -13,17 +13,17 @@ if sys.platform == "win32":
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-# Import database_manager file and UpworkDatabase class from it and tables jobs and cover_letters
-from data.database_manager import UpworkDatabase
+# Import database_manager file and JobDatabase class from it and tables jobs and cover_letters
+from data.database_manager import JobDatabase
 
 
 # Function to get latest job without cover letter
-# 1 . connect to database using UpworkDatabase class and tables jobs and cover_letters
+# 1 . connect to database using JobDatabase class and tables jobs and cover_letters
 def get_latest_job_without_cover_letter():
     """Get latest job without cover letter for AI generation"""
     try:
         # Initialize database
-        db = UpworkDatabase()
+        db = JobDatabase()
         
         # Get latest job without cover letter
         import sqlite3

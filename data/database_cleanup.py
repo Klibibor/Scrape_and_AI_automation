@@ -16,12 +16,15 @@ logger = logging.getLogger(__name__)
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from data.database_manager import UpworkDatabase
+from data.database_manager import JobDatabase
 
 class DatabaseCleaner:
     """Handles database cleanup operations"""
     
-    def __init__(self, db_path: str = "upwork_data.db", keep_scrapes: int = 50):
+    def __init__(self, db_path: str = None, keep_scrapes: int = 50):
+        # Default to new database location if no path provided
+        if db_path is None:
+            db_path = os.path.join(os.path.dirname(__file__), "jobs.db")
         self.db_path = db_path
         self.keep_scrapes = keep_scrapes
         self.cleanup_stats = {

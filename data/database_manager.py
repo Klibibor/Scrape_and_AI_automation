@@ -11,9 +11,12 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 
 # class to call database functions
-class UpworkDatabase:
-    def __init__(self, db_path: str = "upwork_data.db"):
+class JobDatabase:
+    def __init__(self, db_path: str = None):
         # Initialize database working directory
+        if db_path is None:
+            # Default to data/jobs.db relative to this file's directory
+            db_path = os.path.join(os.path.dirname(__file__), "jobs.db")
         self.db_path = db_path
         # Create database tables if they don't exist
         self.init_database()
@@ -224,11 +227,11 @@ class UpworkDatabase:
         ))
         
         job_id = cursor.lastrowid
+        rows_affected = cursor.rowcount
+        
         conn.commit()
         conn.close()
-        return job_id
-    
-    # ======================== 🛸➕🪣 function to add parsed proposal data ========================
+        return job_id    # ======================== 🛸➕🪣 function to add parsed proposal data ========================
     def add_proposal(self, scrape_id: int, proposal_data: Dict) -> int:
         """Add parsed proposal data to database"""
         conn = sqlite3.connect(self.db_path)
@@ -575,6 +578,7 @@ class UpworkDatabase:
     
     def import_from_json_file(self, file_path: str, scrape_type: str = 'imported') -> Tuple[int, int]:
         """Import data from existing JSON files"""
+        
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
         
@@ -598,6 +602,18 @@ class UpworkDatabase:
                 jobs_added += 1
         
         return scrape_id, jobs_added
+    
+    def add_jobs_directly(self, scrape_id: int, jobs: List[Dict]) -> int:
+        """Add multiple jobs directly to database without JSON intermediate"""
+        jobs_added = 0
+        for job in jobs:
+            try:
+                self.add_job(scrape_id, job)
+                jobs_added += 1
+            except Exception as e:
+                print(f"⚠️  Error adding job {job.get('job_uid', 'unknown')}: {e}")
+                continue
+        return jobs_added
     
     # ======================== 🛸➕🪣 function to export data to JSON ========================
     def export_to_json(self, output_file: str):
@@ -642,6 +658,253 @@ class UpworkDatabase:
         
         return total_files, total_jobs
 
+    # ======================== 🧹 DUPLICATE CLEANUP FUNCTIONS ========================
+    
+    def remove_duplicate_jobs(self) -> Dict:
+        """Remove duplicate jobs by title and URL, keep most recent"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        stats = {
+            'title_duplicates_removed': 0,
+            'url_duplicates_removed': 0,
+            'total_jobs_before': 0,
+            'total_jobs_after': 0
+        }
+        
+        # Get initial count
+        cursor.execute('SELECT COUNT(*) FROM jobs')
+        stats['total_jobs_before'] = cursor.fetchone()[0]
+        
+        print(f"[CLEANUP] Starting job cleanup - {stats['total_jobs_before']} total jobs")
+        
+        # Remove duplicates by job title (case-insensitive), prioritize jobs with cover letters
+        cursor.execute('''
+            SELECT LOWER(job_title), COUNT(*) as count
+            FROM jobs 
+            WHERE job_title IS NOT NULL AND job_title != ''
+            GROUP BY LOWER(job_title)
+            HAVING count > 1
+        ''')
+        
+        title_duplicates = cursor.fetchall()
+        
+        for lower_title, count in title_duplicates:
+            # Get jobs with this title, prioritizing those with cover letters
+            cursor.execute('''
+                SELECT j.id, j.parsed_timestamp, 
+                       CASE WHEN cl.job_id IS NOT NULL THEN 1 ELSE 0 END as has_cover_letter
+                FROM jobs j
+                LEFT JOIN cover_letters cl ON j.id = cl.job_id
+                WHERE LOWER(j.job_title) = ?
+                ORDER BY CASE WHEN cl.job_id IS NOT NULL THEN 0 ELSE 1 END, j.parsed_timestamp DESC
+            ''', (lower_title,))
+            
+            jobs = cursor.fetchall()
+            # Keep first (prioritized by cover letter, then most recent), delete others
+            ids_to_delete = [job[0] for job in jobs[1:]]
+            
+            if ids_to_delete:
+                placeholders = ','.join(['?' for _ in ids_to_delete])
+                cursor.execute(f'DELETE FROM jobs WHERE id IN ({placeholders})', ids_to_delete)
+                stats['title_duplicates_removed'] += len(ids_to_delete)
+                
+                kept_job = jobs[0]
+                has_cover_letter_text = "with cover letter" if kept_job[2] else "without cover letter" 
+                print(f"[REMOVE] Kept job {has_cover_letter_text}, removed {len(ids_to_delete)} duplicates for title: {lower_title[:50]}...")
+        
+        # Remove duplicates by job URL, prioritize jobs with cover letters
+        cursor.execute('''
+            SELECT job_url, COUNT(*) as count
+            FROM jobs 
+            WHERE job_url IS NOT NULL AND job_url != '' AND job_url != 'N/A'
+            GROUP BY job_url
+            HAVING count > 1
+        ''')
+        
+        url_duplicates = cursor.fetchall()
+        
+        for job_url, count in url_duplicates:
+            # Get jobs with this URL, prioritizing those with cover letters
+            cursor.execute('''
+                SELECT j.id, j.parsed_timestamp,
+                       CASE WHEN cl.job_id IS NOT NULL THEN 1 ELSE 0 END as has_cover_letter
+                FROM jobs j
+                LEFT JOIN cover_letters cl ON j.id = cl.job_id
+                WHERE j.job_url = ?
+                ORDER BY CASE WHEN cl.job_id IS NOT NULL THEN 0 ELSE 1 END, j.parsed_timestamp DESC
+            ''', (job_url,))
+            
+            jobs = cursor.fetchall()
+            ids_to_delete = [job[0] for job in jobs[1:]]  # Keep first (prioritized)
+            
+            if ids_to_delete:
+                placeholders = ','.join(['?' for _ in ids_to_delete])
+                cursor.execute(f'DELETE FROM jobs WHERE id IN ({placeholders})', ids_to_delete)
+                stats['url_duplicates_removed'] += len(ids_to_delete)
+                
+                kept_job = jobs[0]
+                has_cover_letter_text = "with cover letter" if kept_job[2] else "without cover letter"
+                print(f"[REMOVE] Kept job {has_cover_letter_text}, removed {len(ids_to_delete)} duplicates for URL: {job_url[:50]}...")
+        
+        # Get final count
+        cursor.execute('SELECT COUNT(*) FROM jobs')
+        stats['total_jobs_after'] = cursor.fetchone()[0]
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"[SUCCESS] Job cleanup completed:")
+        print(f"   Jobs before: {stats['total_jobs_before']}")
+        print(f"   Jobs after: {stats['total_jobs_after']}")
+        print(f"   Removed by title: {stats['title_duplicates_removed']}")
+        print(f"   Removed by URL: {stats['url_duplicates_removed']}")
+        
+        return stats
+
+    def cleanup_old_scraped_data(self, keep_latest: int = 30) -> Dict:
+        """Remove old scraped data entries, keep only latest N entries"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Get total count before cleanup
+        cursor.execute('SELECT COUNT(*) FROM scraped_data')
+        total_before = cursor.fetchone()[0]
+        
+        if total_before <= keep_latest:
+            print(f"[INFO] Only {total_before} scraped entries found, keeping all")
+            conn.close()
+            return {
+                'scraped_before': total_before,
+                'scraped_after': total_before,
+                'scraped_removed': 0,
+                'orphaned_jobs_removed': 0
+            }
+        
+        # Get IDs of entries to keep (most recent)
+        cursor.execute('''
+            SELECT id FROM scraped_data 
+            ORDER BY scrape_timestamp DESC 
+            LIMIT ?
+        ''', (keep_latest,))
+        
+        keep_ids = [row[0] for row in cursor.fetchall()]
+        
+        # Delete old scraped data
+        placeholders = ','.join(['?' for _ in keep_ids])
+        cursor.execute(f'''
+            DELETE FROM scraped_data 
+            WHERE id NOT IN ({placeholders})
+        ''', keep_ids)
+        
+        scraped_removed = cursor.rowcount
+        
+        # Remove orphaned jobs (jobs that reference deleted scraped_data)
+        cursor.execute('''
+            DELETE FROM jobs 
+            WHERE scrape_id NOT IN (SELECT id FROM scraped_data)
+        ''')
+        
+        orphaned_jobs_removed = cursor.rowcount
+        
+        # Get final count
+        cursor.execute('SELECT COUNT(*) FROM scraped_data')
+        total_after = cursor.fetchone()[0]
+        
+        conn.commit()
+        conn.close()
+        
+        stats = {
+            'scraped_before': total_before,
+            'scraped_after': total_after,
+            'scraped_removed': scraped_removed,
+            'orphaned_jobs_removed': orphaned_jobs_removed
+        }
+        
+        if scraped_removed > 0 or orphaned_jobs_removed > 0:
+            print(f"[CLEANUP] Cleaned old data:")
+            print(f"   Scraped data: {total_before} -> {total_after}")
+            print(f"   Removed scraped entries: {scraped_removed}")
+            print(f"   Removed orphaned jobs: {orphaned_jobs_removed}")
+        
+        return stats
+
+    def get_duplicate_stats(self) -> Dict:
+        """Get statistics about potential duplicates without removing them"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Count title duplicates
+        cursor.execute('''
+            SELECT COUNT(*) FROM (
+                SELECT LOWER(job_title), COUNT(*) as count
+                FROM jobs 
+                WHERE job_title IS NOT NULL AND job_title != ''
+                GROUP BY LOWER(job_title)
+                HAVING count > 1
+            )
+        ''')
+        title_duplicate_groups = cursor.fetchone()[0]
+        
+        # Count total title duplicates
+        cursor.execute('''
+            SELECT SUM(count - 1) FROM (
+                SELECT COUNT(*) as count
+                FROM jobs 
+                WHERE job_title IS NOT NULL AND job_title != ''
+                GROUP BY LOWER(job_title)
+                HAVING count > 1
+            )
+        ''')
+        title_duplicates_count = cursor.fetchone()[0] or 0
+        
+        # Count URL duplicates
+        cursor.execute('''
+            SELECT COUNT(*) FROM (
+                SELECT job_url, COUNT(*) as count
+                FROM jobs 
+                WHERE job_url IS NOT NULL AND job_url != '' AND job_url != 'N/A'
+                GROUP BY job_url
+                HAVING count > 1
+            )
+        ''')
+        url_duplicate_groups = cursor.fetchone()[0]
+        
+        cursor.execute('''
+            SELECT SUM(count - 1) FROM (
+                SELECT COUNT(*) as count
+                FROM jobs 
+                WHERE job_url IS NOT NULL AND job_url != '' AND job_url != 'N/A'
+                GROUP BY job_url
+                HAVING count > 1
+            )
+        ''')
+        url_duplicates_count = cursor.fetchone()[0] or 0
+        
+        # Total jobs
+        cursor.execute('SELECT COUNT(*) FROM jobs')
+        total_jobs = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return {
+            'total_jobs': total_jobs,
+            'title_duplicate_groups': title_duplicate_groups,
+            'title_duplicates_count': title_duplicates_count,
+            'url_duplicate_groups': url_duplicate_groups,
+            'url_duplicates_count': url_duplicates_count,
+            'total_potential_duplicates': title_duplicates_count + url_duplicates_count
+        }
+
+    def get_jobs_count(self) -> int:
+        """Get total count of jobs in database"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM jobs')
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+
 # Utility functions
 def get_database_info(db_path: str = "upwork_data.db") -> Dict:
     """Get database file information"""
@@ -657,7 +920,7 @@ def get_database_info(db_path: str = "upwork_data.db") -> Dict:
 
 if __name__ == "__main__":
     # Test database creation
-    db = UpworkDatabase()
+    db = JobDatabase()
     print("✅ Database initialized successfully!")
     
     # Test adding sample data

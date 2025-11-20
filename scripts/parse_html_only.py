@@ -15,25 +15,25 @@ if sys.platform == "win32":
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 # Import database manager file and class that holds functions
-from data.database_manager import UpworkDatabase
+from data.database_manager import JobDatabase
 
 # Import existing parser (now in same directory)
-from upwork_data_parser import parse_html_file
-# 1. Initialize database using UpworkDatabase class
+from data_parser import parse_html_file
+# 1. Initialize database using JobDatabase class
 # 2. Get latest raw HTML from database
 # 3. open temporary file to write HTML content
-# 4. use parse_html_file function from upwork_data_parser.py and UpworkDataParser class to parse HTML file
+# 4. use parse_html_file function from data_parser.py and DataParser class to parse HTML file
 # 5. extract jobs from parsed result
 # 6. return jobs as JSON file for n8n
 def parse_html_only():
     """Parse latest HTML from database and return jobs as JSON"""
     try:
         # Initialize database
-        db = UpworkDatabase()
+        db = JobDatabase()
         
         # Get latest raw HTML from database
         import sqlite3
-        # Connect to database using UpworkDatabase and db_path
+        # Connect to database using JobDatabase and db_path
         conn = sqlite3.connect(db.db_path)
         # Create cursor
         cursor = conn.cursor()
@@ -69,7 +69,7 @@ def parse_html_only():
         
         try:
             # try to Parse using 
-            # upwork_data_parser.py class UpworkDataParser and its function parse_html_file
+            # data_parser.py class DataParser and its function parse_html_file
             parse_result = parse_html_file(temp_file_path)
             
             # Extract jobs from result

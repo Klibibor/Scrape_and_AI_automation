@@ -16,7 +16,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 # Try to import database manager, else exit with error
 try:
-    from data.database_manager import UpworkDatabase
+    from data.database_manager import JobDatabase
 
 except ImportError:
     print("❌ Cannot import database_manager")
@@ -89,7 +89,7 @@ class SmartCoverLetterGenerator:
         # try to connect to database
         try:
             # variable for database
-            db = UpworkDatabase()
+            db = JobDatabase()
             # establish connection to database
             conn = sqlite3.connect(db.db_path)
             # create cursor
@@ -120,7 +120,7 @@ class SmartCoverLetterGenerator:
     def get_latest_job_without_cover_letter(self):
         """Get the most recent job without cover letter"""
         try:
-            db = UpworkDatabase()
+            db = JobDatabase()
             conn = sqlite3.connect(db.db_path)
             cursor = conn.cursor()
             # query to get latest job without cover letter
@@ -373,7 +373,7 @@ I am excited to apply for the {job_title} position."""
 # 5. load model temporarily with load_model_temporarily
 # 6. generate cover letter with generate_cover_letter from job data
 # 7. unload model to free memory with unload_model
-# 8. save to database with UpworkDatabase class and add_cover_letter function
+# 8. save to database with JobDatabase class and add_cover_letter function
 def smart_generate_cover_letter():
     
     # log event
@@ -419,9 +419,9 @@ def smart_generate_cover_letter():
         print("❌ Failed to generate cover letter")
         return False
     
-    # Save to database with UpworkDatabase class and add_cover_letter function
+    # Save to database with JobDatabase class and add_cover_letter function
     try:
-        db = UpworkDatabase()
+        db = JobDatabase()
         cover_letter_id = db.add_cover_letter(
             job_id=job_data['id'],
             ai_provider="trained_gpt2_smart",

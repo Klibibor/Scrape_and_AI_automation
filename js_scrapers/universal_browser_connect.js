@@ -58,33 +58,22 @@ async function connectToBrowser() {
 }
 
 async function findUpworkTab(browser) {
-    console.log(`🔍 Looking for Upwork tabs...`);
+    console.log(`🔍 Looking for available tabs...`);
 
     const pages = await browser.pages();
     console.log(`📑 Found ${pages.length} open tabs`);
 
-    // Look for Upwork in URL or title
-    for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
+    // Use the first available tab (no longer preferring Upwork)
+    if (pages.length > 0) {
+        const page = pages[0];
         try {
             const url = page.url();
             const title = await page.title();
-
-            console.log(`📄 Tab ${i + 1}: ${title} - ${url}`);
-
-            if (url.includes('upwork.com') || title.toLowerCase().includes('upwork')) {
-                console.log(`🎯 Found Upwork tab: "${title}"`);
-                return page;
-            }
+            console.log(`📌 Using first available tab: "${title}" - ${url}`);
+            return page;
         } catch (error) {
-            console.log(`⚠️  Could not access tab ${i + 1}: ${error.message}`);
+            console.log(`⚠️  Could not access first tab: ${error.message}`);
         }
-    }
-
-    // If no Upwork tab found, use the first available tab
-    if (pages.length > 0) {
-        console.log(`📌 No Upwork tab found, using first available tab`);
-        return pages[0];
     }
 
     throw new Error('No accessible tabs found');
@@ -121,7 +110,7 @@ async function scrapeUpworkJobs(page) {
         // Call Python parser
         console.log(`🐍 Calling Python parser...`);
         const pythonCommand = 'E:/Repoi/UpworkNotif/venv/Scripts/python.exe';
-        const parserScript = path.join(__dirname, '..', 'scripts', 'upwork_data_parser.py');
+        const parserScript = path.join(__dirname, '..', 'scripts', 'data_parser.py');
 
         const pythonProcess = spawn(pythonCommand, [parserScript, '--input', filepath, '--import-db'], {
             cwd: path.join(__dirname, '..'),

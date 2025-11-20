@@ -3,14 +3,14 @@ const puppeteer = require('puppeteer-core');
 // function for scraping
 // uses puppeteer
 // connects to existing Chrome instance via remote debugging port
-// scrapes currently open page
+// scrapes currently open page (first tab)
 async function scrapeWithBrowserConnect() {
     console.log('🔗 PUPPETEER BROWSER CONNECT SCRAPER');
     console.log('=====================================');
-    console.log('📋 Instrukcije:');
-    console.log('1. Pokreni Chrome sa: chrome.exe --remote-debugging-port=9222');
-    console.log('2. Otvori željenu stranicu u browser-u');
-    console.log('3. Pokreni ovaj script');
+    console.log('📋 Instructions:');
+    console.log('1. Start Chrome with: chrome.exe --remote-debugging-port=9222');
+    console.log('2. Open any website in first browser tab');
+    console.log('3. Run this script');
     console.log();
     // variable to hold browser instance
     let browser;
@@ -30,28 +30,21 @@ async function scrapeWithBrowserConnect() {
         const pages = await browser.pages();
         console.log(`📄 Found ${pages.length} open tabs`);
 
-        // Look for Upwork tab first, otherwise use the first tab
+        // Use the first available tab
         let page = pages[0];
-        let upworkPage = null;
 
+        // Log all available tabs for debugging
         for (let i = 0; i < pages.length; i++) {
             const pageUrl = pages[i].url();
             const pageTitle = await pages[i].title().catch(() => '');
             console.log(`📄 Tab ${i}: ${pageTitle} - ${pageUrl}`);
-
-            if (pageUrl.includes('upwork.com') || pageTitle.toLowerCase().includes('upwork')) {
-                upworkPage = pages[i];
-                console.log(`🎯 Found Upwork tab: ${pageTitle}`);
-                break;
-            }
         }
 
-        // Use Upwork page if found, otherwise use first page
-        if (upworkPage) {
-            page = upworkPage;
-            console.log(`✅ Using Upwork page`);
+        // Use first tab
+        if (page) {
+            console.log(`✅ Using first available tab`);
         } else {
-            console.log(`⚠️ No Upwork page found, using current active page`);
+            throw new Error('No tabs available to scrape');
         }
 
         // Check current page URL and title

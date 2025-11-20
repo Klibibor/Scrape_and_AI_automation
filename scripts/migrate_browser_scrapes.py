@@ -17,12 +17,12 @@ import sqlite3
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 
-from data.database_manager import UpworkDatabase
+from data.database_manager import JobDatabase
 
 class BrowserScrapeMigrator:
     def __init__(self, db_path="data/upwork_jobs.db"):
         self.db_path = os.path.join(project_root, db_path)
-        self.db = UpworkDatabase(self.db_path)
+        self.db = JobDatabase(self.db_path)
         
     def parse_upwork_html(self, html_content):
         """Parse Upwork job listing HTML"""

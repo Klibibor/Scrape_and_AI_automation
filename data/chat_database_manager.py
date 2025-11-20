@@ -406,6 +406,278 @@ class ChatDatabase:
             }
         return None
 
+    # ======================== 🧹 CHAT CLEANUP FUNCTIONS ========================
+    
+    def find_duplicate_chat_sessions(self) -> List[Dict]:
+        """Find duplicate chat sessions by platform, title, and participant"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT chat_platform, chat_title, participant_name, 
+                   COUNT(*) as session_count,
+                   GROUP_CONCAT(session_id ORDER BY total_messages DESC, last_activity DESC) as session_ids,
+                   GROUP_CONCAT(total_messages ORDER BY total_messages DESC, last_activity DESC) as message_counts
+            FROM chat_sessions 
+            WHERE chat_platform IS NOT NULL AND participant_name IS NOT NULL
+            GROUP BY chat_platform, chat_title, participant_name
+            HAVING COUNT(*) > 1
+            ORDER BY COUNT(*) DESC
+        ''')
+        
+        duplicates = []
+        for row in cursor.fetchall():
+            platform, title, participant, count, ids_str, counts_str = row
+            session_ids = ids_str.split(',')
+            message_counts = [int(c) for c in counts_str.split(',')]
+            
+            duplicates.append({
+                'platform': platform,
+                'title': title,
+                'participant': participant,
+                'duplicate_count': count,
+                'session_ids': session_ids,
+                'message_counts': message_counts,
+                'keep_session': session_ids[0],  # First one has most messages
+                'remove_sessions': session_ids[1:]
+            })
+        
+        conn.close()
+        return duplicates
+
+    def cleanup_duplicate_chat_sessions(self) -> Dict:
+        """Remove duplicate chat sessions, merge messages into session with most content"""
+        print("[CLEANUP] Starting chat session cleanup...")
+        
+        # Find all duplicate groups
+        duplicate_groups = self.find_duplicate_chat_sessions()
+        
+        if not duplicate_groups:
+            print("[CLEANUP] No duplicate chat sessions found")
+            return {
+                'duplicate_groups_found': 0,
+                'sessions_removed': 0,
+                'messages_merged': 0,
+                'duplicate_messages_skipped': 0,
+                'success': True
+            }
+        
+        print(f"[CLEANUP] Found {len(duplicate_groups)} duplicate groups")
+        
+        total_stats = {
+            'duplicate_groups_found': len(duplicate_groups),
+            'sessions_removed': 0,
+            'messages_merged': 0,
+            'duplicate_messages_skipped': 0,
+            'groups_processed': 0
+        }
+        
+        # Process each duplicate group
+        for group in duplicate_groups:
+            print(f"\n[CLEANUP] Processing duplicate group:")
+            print(f"   Platform: {group['platform']}")
+            print(f"   Participant: {group['participant']}")
+            print(f"   Sessions: {group['duplicate_count']}")
+            print(f"   Keep: {group['keep_session']} ({group['message_counts'][0]} messages)")
+            print(f"   Remove: {group['remove_sessions']}")
+            
+            try:
+                merge_stats = self.merge_chat_sessions(
+                    group['keep_session'],
+                    group['remove_sessions']
+                )
+                
+                total_stats['sessions_removed'] += merge_stats['sessions_removed']
+                total_stats['messages_merged'] += merge_stats['messages_merged']
+                total_stats['duplicate_messages_skipped'] += merge_stats['duplicate_messages_skipped']
+                total_stats['groups_processed'] += 1
+                
+            except Exception as e:
+                print(f"[ERROR] Failed to merge group: {e}")
+                continue
+        
+        total_stats['success'] = True
+        
+        print(f"\n[SUCCESS] Chat cleanup completed:")
+        print(f"   Duplicate groups processed: {total_stats['groups_processed']}")
+        print(f"   Sessions removed: {total_stats['sessions_removed']}")
+        print(f"   Messages merged: {total_stats['messages_merged']}")
+        print(f"   Duplicate messages skipped: {total_stats['duplicate_messages_skipped']}")
+        
+        return total_stats
+
+    def merge_chat_sessions(self, keep_session_id: str, remove_session_ids: List[str]) -> Dict:
+        """Merge multiple chat sessions into one, keeping all unique messages"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        stats = {
+            'messages_merged': 0,
+            'duplicate_messages_skipped': 0,
+            'sessions_removed': 0,
+            'total_messages_before': 0,
+            'total_messages_after': 0
+        }
+        
+        print(f"[MERGE] Merging sessions into {keep_session_id}")
+        print(f"[MERGE] Removing sessions: {remove_session_ids}")
+        
+        # Get current max order in keep session
+        cursor.execute('''
+            SELECT COALESCE(MAX(message_order), 0), COUNT(*) 
+            FROM chat_messages 
+            WHERE session_id = ?
+        ''', (keep_session_id,))
+        max_order, current_messages = cursor.fetchone()
+        stats['total_messages_before'] = current_messages
+        
+        # Process each session to remove
+        for remove_session_id in remove_session_ids:
+            print(f"[MERGE] Processing session: {remove_session_id}")
+            
+            # Get all messages from session to remove
+            cursor.execute('''
+                SELECT message_id, sender, sender_type, message_text, timestamp, message_order, scraped_at
+                FROM chat_messages 
+                WHERE session_id = ?
+                ORDER BY message_order ASC
+            ''', (remove_session_id,))
+            
+            messages_to_merge = cursor.fetchall()
+            
+            for msg in messages_to_merge:
+                message_id, sender, sender_type, text, timestamp, order, scraped_at = msg
+                
+                # Check if similar message already exists in keep session
+                cursor.execute('''
+                    SELECT id FROM chat_messages 
+                    WHERE session_id = ? AND sender = ? AND message_text = ?
+                    LIMIT 1
+                ''', (keep_session_id, sender, text))
+                
+                if cursor.fetchone():
+                    stats['duplicate_messages_skipped'] += 1
+                    print(f"[SKIP] Duplicate message from {sender}: {text[:30]}...")
+                    continue
+                
+                # Add unique message to keep session
+                max_order += 1
+                try:
+                    cursor.execute('''
+                        INSERT INTO chat_messages 
+                        (session_id, message_id, sender, sender_type, message_text, 
+                         timestamp, message_order, scraped_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        keep_session_id,
+                        f"{keep_session_id}_{max_order}",  # New message ID
+                        sender,
+                        sender_type,
+                        text,
+                        timestamp,
+                        max_order,
+                        scraped_at
+                    ))
+                    stats['messages_merged'] += 1
+                    print(f"[MERGE] Added message from {sender}: {text[:50]}...")
+                    
+                except Exception as e:
+                    print(f"[ERROR] Failed to merge message: {e}")
+                    continue
+            
+            # Delete old messages from remove session
+            cursor.execute('DELETE FROM chat_messages WHERE session_id = ?', (remove_session_id,))
+            
+            # Delete old session
+            cursor.execute('DELETE FROM chat_sessions WHERE session_id = ?', (remove_session_id,))
+            stats['sessions_removed'] += 1
+            
+            print(f"[REMOVE] Deleted session: {remove_session_id}")
+        
+        # Update keep session metadata
+        cursor.execute('''
+            UPDATE chat_sessions 
+            SET total_messages = (
+                SELECT COUNT(*) FROM chat_messages WHERE session_id = ?
+            ),
+            last_activity = datetime('now')
+            WHERE session_id = ?
+        ''', (keep_session_id, keep_session_id))
+        
+        # Get final message count
+        cursor.execute('''
+            SELECT COUNT(*) FROM chat_messages WHERE session_id = ?
+        ''', (keep_session_id,))
+        stats['total_messages_after'] = cursor.fetchone()[0]
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"[SUCCESS] Session merge completed:")
+        print(f"   Messages before: {stats['total_messages_before']}")
+        print(f"   Messages after: {stats['total_messages_after']}")
+        print(f"   Messages merged: {stats['messages_merged']}")
+        print(f"   Duplicates skipped: {stats['duplicate_messages_skipped']}")
+        print(f"   Sessions removed: {stats['sessions_removed']}")
+        
+        return stats
+
+    def get_duplicate_chat_stats(self) -> Dict:
+        """Get statistics about duplicate chat sessions without removing them"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Count total sessions
+        cursor.execute('SELECT COUNT(*) FROM chat_sessions')
+        total_sessions = cursor.fetchone()[0]
+        
+        # Count duplicate groups
+        cursor.execute('''
+            SELECT COUNT(*) FROM (
+                SELECT chat_platform, chat_title, participant_name, COUNT(*) as count
+                FROM chat_sessions 
+                WHERE chat_platform IS NOT NULL AND participant_name IS NOT NULL
+                GROUP BY chat_platform, chat_title, participant_name
+                HAVING count > 1
+            )
+        ''')
+        duplicate_groups = cursor.fetchone()[0]
+        
+        # Count total duplicate sessions
+        cursor.execute('''
+            SELECT SUM(count - 1) FROM (
+                SELECT COUNT(*) as count
+                FROM chat_sessions 
+                WHERE chat_platform IS NOT NULL AND participant_name IS NOT NULL
+                GROUP BY chat_platform, chat_title, participant_name
+                HAVING count > 1
+            )
+        ''')
+        duplicate_sessions_count = cursor.fetchone()[0] or 0
+        
+        # Count total messages
+        cursor.execute('SELECT COUNT(*) FROM chat_messages')
+        total_messages = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return {
+            'total_sessions': total_sessions,
+            'duplicate_groups': duplicate_groups,
+            'duplicate_sessions_count': duplicate_sessions_count,
+            'total_messages': total_messages,
+            'potential_duplicates': duplicate_sessions_count
+        }
+
+    def get_chat_sessions_count(self) -> int:
+        """Get total count of chat sessions in database"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM chat_sessions')
+        count = cursor.fetchone()[0]
+        conn.close()
+        return count
+
 if __name__ == "__main__":
     # Test database creation
     db = ChatDatabase()

@@ -13,12 +13,12 @@ from pathlib import Path
 # Add parent directory to path to import the database manager
 sys.path.append(str(Path(__file__).parent.parent))
 
-from data.database_manager import UpworkDatabase
+from data.database_manager import JobDatabase
 
 def save_cover_letter_to_db(job_id: int, ai_provider: str, cover_letter_text: str, notes: str = None):
     """Save cover letter to database and return result"""
     try:
-        db = UpworkDatabase()
+        db = JobDatabase()
         cover_letter_id = db.add_cover_letter(
             job_id=job_id,
             ai_provider=ai_provider,
@@ -44,7 +44,7 @@ def save_cover_letter_to_db(job_id: int, ai_provider: str, cover_letter_text: st
 def get_recent_jobs_with_covers(limit: int = 20):
     """Get recent jobs and their cover letters for reporting"""
     try:
-        db = UpworkDatabase()
+        db = JobDatabase()
         
         # Custom query to get jobs with their cover letters
         import sqlite3

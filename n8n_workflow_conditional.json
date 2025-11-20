@@ -178,6 +178,22 @@
       ]
     },
     {
+      "__comment": "======== node for cleaning database duplicates ==============",
+      "works": "removes duplicate jobs and cleans old scraped data before dashboard generation",
+      "parameters": {
+        "command": "python E:\\\\Repoi\\\\UpworkNotif\\\\scripts\\\\cleanup_job_database.py",
+        "workingDirectory": "E:\\\\Repoi\\\\UpworkNotif"
+      },
+      "id": "ahafcafb-1fc5-4b7b-9e8e-9f5f5c6e7dda",
+      "name": "Cleanup Database Duplicates",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        1640,
+        300
+      ]
+    },
+    {
       "__comment": "======== node for generating and opening dashboard ==============",
       "works": "executes a powershell script to generate and open dashboard",
       "parameters": {
@@ -189,7 +205,7 @@
       "type": "n8n-nodes-base.executeCommand",
       "typeVersion": 1,
       "position": [
-        1740,
+        1840,
         300
       ]
     }
@@ -302,6 +318,17 @@
       ]
     },
     "Import to DB": {
+      "main": [
+        [
+          {
+            "node": "Cleanup Database Duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cleanup Database Duplicates": {
       "main": [
         [
           {

@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent / 'data'))
 
 try:
-    from database_manager import UpworkDatabase
+    from database_manager import JobDatabase
 except ImportError:
     print("Cannot import database_manager from data/ directory")
     sys.exit(1)
@@ -106,33 +106,42 @@ def generate_pagination_html(current_page, total_pages, base_url="?"):
     pagination_html += '</div>'
     return pagination_html
 
-def generate_html_dashboard(output_path="dashboard.html", page=1, per_page=20):
-    """Generate HTML dashboard from database with pagination"""
+def generate_html_dashboard(output_path="dashboard.html"):
+    """Generate HTML dashboard from database with all jobs"""
     
     try:
-        # Initialize database
-        db_path = "upwork_data.db"
-        if not os.path.exists(db_path):
-            print(f"Database not found: {db_path}")
+        # Initialize database - try multiple possible paths
+        possible_paths = [
+            os.path.join("..", "data", "jobs.db"),  # Called from dashboard_generate/
+            os.path.join("data", "jobs.db"),        # Called from project root
+            os.path.join(".", "data", "jobs.db")    # Alternative root call
+        ]
+        
+        db_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                db_path = path
+                break
+                
+        if not db_path:
+            print(f"Database not found in any of these locations: {possible_paths}")
             return False
             
-        db = UpworkDatabase(db_path)
+        db = JobDatabase(db_path)
         
         # Get data from database
         print("Loading data from database...")
         stats = db.get_dashboard_stats()
         
-        # Get paginated jobs
-        offset = (page - 1) * per_page
+        # Get all jobs
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         # Get total jobs count
         cursor.execute("SELECT COUNT(*) FROM jobs")
         total_jobs = cursor.fetchone()[0]
-        total_pages = (total_jobs + per_page - 1) // per_page
         
-        # Get paginated jobs with cover letter info
+        # Get all jobs with cover letter info, prioritizing jobs with cover letters
         cursor.execute('''
             SELECT j.job_uid, j.job_title, j.job_url, j.posted_time, j.job_type, 
                    j.experience_level, j.budget, j.hourly_rate_min, j.hourly_rate_max,
@@ -140,9 +149,8 @@ def generate_html_dashboard(output_path="dashboard.html", page=1, per_page=20):
                    cl.id as cover_letter_id, cl.ai_provider, cl.cover_letter_text
             FROM jobs j
             LEFT JOIN cover_letters cl ON j.id = cl.job_id
-            ORDER BY j.parsed_timestamp DESC 
-            LIMIT ? OFFSET ?
-        ''', (per_page, offset))
+            ORDER BY CASE WHEN cl.job_id IS NOT NULL THEN 0 ELSE 1 END, j.parsed_timestamp DESC
+        ''')
         
         jobs_data = cursor.fetchall()
         jobs = []
@@ -662,19 +670,15 @@ def generate_html_dashboard(output_path="dashboard.html", page=1, per_page=20):
         </div>
 """
 
-        # Add jobs section with pagination
+        # Add jobs section
         html_content += f"""
         <div class="content-section">
             <h2 class="section-title">
-                <span>💼 Opportunities (Page {page} of {total_pages})</span>
-                <span class="pagination-info">Showing {len(jobs)} of {total_jobs} opportunities</span>
+                <span>💼 Job Opportunities</span>
+                <span class="pagination-info">Showing all {total_jobs} opportunities</span>
             </h2>
 """
 
-        # Add pagination at top
-        pagination_html = generate_pagination_html(page, total_pages)
-        if pagination_html:
-            html_content += pagination_html
 
         if jobs:
             html_content += """
@@ -806,9 +810,6 @@ def generate_html_dashboard(output_path="dashboard.html", page=1, per_page=20):
             </div>
 """
 
-        # Add pagination at bottom
-        if pagination_html:
-            html_content += pagination_html
 
         html_content += """
         </div>
@@ -818,7 +819,7 @@ def generate_html_dashboard(output_path="dashboard.html", page=1, per_page=20):
         html_content += f"""
         <div class="timestamp">
             <p>📊 Dashboard generated: {datetime.now().strftime('%B %d, %Y at %H:%M:%S')}</p>
-            <p>🗃️ Database: {db_path} | Page: {page}/{total_pages} | Total Opportunities: {total_jobs}</p>
+            <p>🗃️ Database: {db_path} | Total Opportunities: {total_jobs}</p>
         </div>
     </div>
     
@@ -827,18 +828,6 @@ def generate_html_dashboard(output_path="dashboard.html", page=1, per_page=20):
         setTimeout(function() {{
             location.reload();
         }}, 300000);
-        
-        // Add keyboard navigation
-        document.addEventListener('keydown', function(e) {{
-            if (e.key === 'ArrowLeft') {{
-                const prevBtn = document.querySelector('.page-btn[href*="page={page-1}"]');
-                if (prevBtn) prevBtn.click();
-            }}
-            if (e.key === 'ArrowRight') {{
-                const nextBtn = document.querySelector('.page-btn[href*="page={page+1}"]');
-                if (nextBtn) nextBtn.click();
-            }}
-        }});
         
         // Cover Letter Modal Functions
         function openCoverLetterModal(jobTitle, provider, coverLetterText) {{
@@ -903,7 +892,7 @@ def generate_html_dashboard(output_path="dashboard.html", page=1, per_page=20):
             f.write(html_content)
         
         print(f"Dashboard generated: {output_path}")
-        print(f"Stats: {total_jobs} total jobs, {len(jobs)} on page {page}/{total_pages}")
+        print(f"Stats: {total_jobs} total jobs displayed")
         
         return True
         
@@ -917,15 +906,13 @@ def main():
     
     parser = argparse.ArgumentParser(description='Generate HTML dashboard from freelance jobs database')
     parser.add_argument('--output', '-o', default='dashboard.html', help='Output HTML file path')
-    parser.add_argument('--page', '-p', type=int, default=1, help='Page number (default: 1)')
-    parser.add_argument('--per-page', type=int, default=20, help='Jobs per page (default: 20)')
     
     args = parser.parse_args()
     
     print('JOB OPPORTUNITIES DASHBOARD GENERATOR')
     print('=========================================')
     
-    success = generate_html_dashboard(args.output, args.page, args.per_page)
+    success = generate_html_dashboard(args.output)
     
     if success:
         print(f'SUCCESS! Dashboard saved to: {args.output}')

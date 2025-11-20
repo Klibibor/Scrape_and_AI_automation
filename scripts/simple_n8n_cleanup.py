@@ -15,8 +15,8 @@ try:
     
     print("[INFO] Starting n8n database cleanup...")
     
-    # Fixed parameters
-    db_path = "upwork_data.db"
+    # Fixed parameters - use new database location
+    db_path = os.path.join("data", "jobs.db")
     keep_scrapes = 50
     
     # Make sure we're in the right directory

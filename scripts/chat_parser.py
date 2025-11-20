@@ -11,6 +11,7 @@ import argparse
 from datetime import datetime
 from bs4 import BeautifulSoup
 import re
+from typing import Optional, List, Dict
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -24,6 +25,184 @@ class ChatParser:
         self.db_path = os.path.join(project_root, db_path)
         # initialize database manager
         self.db = ChatDatabase(self.db_path)
+
+    # ================ INCREMENTAL CHAT PROCESSING FUNCTIONS ================
+    # check if chat session exists by platform, title, and participant
+    # takes three parameters platform, title, participant
+    # 1. search database for input parameters
+    # 2. return session_id if found else None
+    def chat_session_exists(self, platform: str, title: str, participant: str) -> Optional[str]:
+        """Check if chat session exists by platform, title, and participant"""
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        # from database check if platform, title, participant match existing session
+        cursor.execute('''
+            SELECT session_id FROM chat_sessions 
+            WHERE chat_platform = ? AND chat_title = ? AND participant_name = ?
+            ORDER BY total_messages DESC, last_activity DESC
+            LIMIT 1
+        ''', (platform, title, participant))
+        # check rows that are matching and put inside row var
+        row = cursor.fetchone()
+        # if there are matching rows
+        if row:
+            # log found session
+            print(f"[FOUND] Existing chat session: {row[0]} ({platform}, {participant})")
+            # return the first row that matches
+            return row[0]
+        # else return None
+        return None
+    # if session exists update with new messages only
+    # takes session_id and list of new messages as parameters
+    def update_existing_session(self, session_id: str, new_messages: List[Dict]) -> int:
+        """Update existing session with new messages only"""
+        # establish database connection
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
+        
+        # using session_id get current max order messages
+        cursor.execute('''
+            SELECT COALESCE(MAX(message_order), 0) FROM chat_messages 
+            WHERE session_id = ?
+        ''', (session_id,))
+        max_order = cursor.fetchone()[0]
+        
+        # Add only new messages
+        saved_count = 0
+        for msg in new_messages:
+            # Check if message already exists
+            cursor.execute('''
+                SELECT id FROM chat_messages 
+                WHERE session_id = ? AND sender = ? AND message_text = ?
+                LIMIT 1
+            ''', (session_id, msg['sender'], msg['text']))
+            # if message does not exist in database
+            if not cursor.fetchone():  # Message doesn't exist
+                max_order += 1
+                try:
+                    # Insert new message into database
+                    cursor.execute('''
+                        INSERT INTO chat_messages 
+                        (session_id, message_id, sender, sender_type, message_text, 
+                         timestamp, message_order)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        session_id,
+                        f"{session_id}_{max_order}",
+                        msg['sender'],
+                        msg['sender_type'],
+                        msg['text'],
+                        msg['timestamp'],
+                        max_order
+                    ))
+                    saved_count += 1
+                    # log new message added
+                except Exception as e:
+                    print(f"[ERROR] Failed to save message: {e}")
+                    continue
+            else:
+                print(f"[SKIP] Duplicate message from {msg['sender']}: {msg['text'][:30]}...")
+        
+        # Update session metadata
+        cursor.execute('''
+            UPDATE chat_sessions 
+            SET last_activity = datetime('now'), 
+                total_messages = (SELECT COUNT(*) FROM chat_messages WHERE session_id = ?)
+            WHERE session_id = ?
+        ''', (session_id, session_id))
+        
+        conn.commit()
+        
+        print(f"[SUCCESS] Added {saved_count} new messages to existing session {session_id}")
+        return saved_count
+    # extract participant name from messages
+    def extract_participant_name(self, platform: str, messages: List[Dict]) -> str:
+        """Extract participant name from messages"""
+        # Try to find unique senders
+        senders = set()
+        for msg in messages[:10]:  # Check first 10 messages
+            sender = msg.get('sender', 'unknown')
+            if sender not in ['unknown', 'user', 'me', 'you'] and len(sender) < 50:
+                senders.add(sender)
+        
+        if senders:
+            return list(senders)[0]  # Return first valid sender
+        
+        return 'Unknown Participant'
+    # process chat with incremental update logic
+    def process_incremental(self, html_file_path: str = None):
+        """Process chat with incremental update logic"""
+        try:
+            # Parse HTML file
+            if html_file_path:
+                messages, platform = self.parse_html_file(html_file_path)
+            else:
+                # Get latest HTML file
+                data_dir = os.path.join(project_root, 'data')
+                html_files = [f for f in os.listdir(data_dir) if f.startswith('chat_raw_') and f.endswith('.html')]
+                
+                if not html_files:
+                    return {'success': False, 'error': 'No chat HTML files found'}
+                
+                latest_file = max(html_files, key=lambda f: os.path.getctime(os.path.join(data_dir, f)))
+                html_path = os.path.join(data_dir, latest_file)
+                messages, platform = self.parse_html_file(html_path)
+            
+            if not messages:
+                return {'success': False, 'error': 'No messages found in HTML'}
+            
+            # Extract chat metadata
+            participant = self.extract_participant_name(platform, messages)
+            title = f"{platform.title()} Chat with {participant}"
+            
+            print(f"[INFO] Processing chat: {platform} - {participant}")
+            print(f"[INFO] Messages in scrape: {len(messages)}")
+            
+            # Check if session exists
+            existing_session_id = self.chat_session_exists(platform, title, participant)
+            
+            if existing_session_id:
+                print(f"[FOUND] Using existing session: {existing_session_id}")
+                
+                # Update with new messages only
+                new_count = self.update_existing_session(existing_session_id, messages)
+                
+                result = {
+                    'action': 'incremental_update',
+                    'session_id': existing_session_id,
+                    'new_messages_added': new_count,
+                    'total_messages_in_scrape': len(messages),
+                    'success': True
+                }
+                
+                print(f"[SUCCESS] Added {new_count} new messages to existing session")
+                
+            else:
+                print(f"[NEW] Creating new chat session")
+                
+                # Create new session (use existing save_to_database method)
+                session_id = self.save_to_database(messages, platform)
+                
+                result = {
+                    'action': 'new_session',
+                    'session_id': session_id,
+                    'messages_saved': len(messages),
+                    'total_messages': len(messages),
+                    'success': True
+                }
+                
+                print(f"[SUCCESS] Created new session with {len(messages)} messages")
+            
+            return result
+            
+        except Exception as e:
+            error_result = {
+                'action': 'error',
+                'error': str(e),
+                'success': False
+            }
+            print(f"[ERROR] Chat parsing failed: {e}")
+            return error_result
     #================== functions for extracting messages for different platforms ===================
     # function for Upwork HTML 
     def parse_upwork_messages(self, soup):
@@ -365,13 +544,32 @@ def main():
     parser = argparse.ArgumentParser(description='Parse chat messages from HTML')
     parser.add_argument('--html-file', help='Specific HTML file to parse')
     parser.add_argument('--latest', action='store_true', help='Process latest HTML file')
+    parser.add_argument('--incremental', action='store_true', help='Process with incremental update logic')
+    parser.add_argument('--cleanup', action='store_true', help='Cleanup duplicate chat sessions')
     
     args = parser.parse_args()
     
     chat_parser = ChatParser()
     
     try:
-        if args.html_file:
+        if args.cleanup:
+            # Cleanup duplicate chat sessions
+            print("[INFO] Starting chat cleanup...")
+            stats = chat_parser.db.cleanup_duplicate_chat_sessions()
+            
+            result = {
+                'action': 'cleanup',
+                'duplicate_cleanup': stats,
+                'success': True
+            }
+            print(json.dumps(result, indent=2))
+            
+        elif args.incremental:
+            # Process with incremental logic
+            result = chat_parser.process_incremental(args.html_file)
+            print(json.dumps(result, indent=2))
+            
+        elif args.html_file:
             messages, platform = chat_parser.parse_html_file(args.html_file)
             session_id = chat_parser.save_to_database(messages, platform)
             print(f"Processed {len(messages)} messages from {args.html_file}")

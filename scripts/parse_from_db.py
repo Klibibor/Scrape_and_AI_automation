@@ -14,16 +14,16 @@ if sys.platform == "win32":
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from data.database_manager import UpworkDatabase
+from data.database_manager import JobDatabase
 
 # Import existing parser (now in same directory)
-from upwork_data_parser import parse_html_file
+from data_parser import parse_html_file
 
 def parse_from_database():
     """Parse latest HTML from database and save jobs"""
     try:
         # Initialize database
-        db = UpworkDatabase()
+        db = JobDatabase()
         
         # Get latest raw HTML from database
         conn = db.conn = sqlite3.connect(db.db_path)

@@ -6,6 +6,7 @@ import sys
 import os
 import json
 import argparse
+import sqlite3
 from datetime import datetime
 
 # Set UTF-8 encoding
@@ -25,12 +26,112 @@ class ChatDashboardGenerator:
         db_path = os.path.join(project_root, "data", "chat_data.db")
         self.db = ChatDatabase(db_path)
     
-    def generate_dashboard(self, session_id=None):
-        """Generate interactive dashboard HTML"""
+    def get_session_stats(self) -> dict:
+        """Get chat session statistics for dashboard"""
         try:
-            # Get dashboard data
+            conn = sqlite3.connect(self.db.db_path)
+            cursor = conn.cursor()
+            
+            # Active sessions count
+            cursor.execute('SELECT COUNT(*) FROM chat_sessions WHERE status = "active" OR status IS NULL')
+            active_sessions_count = cursor.fetchone()[0]
+            
+            # Total messages
+            cursor.execute('SELECT COUNT(*) FROM chat_messages')
+            total_messages = cursor.fetchone()[0]
+            
+            # Recent activity (last hour)
+            cursor.execute('''
+                SELECT COUNT(*) FROM chat_messages 
+                WHERE scraped_at > datetime('now', '-1 hour')
+            ''')
+            recent_messages = cursor.fetchone()[0]
+            
+            return {
+                'active_sessions_count': active_sessions_count,
+                'total_messages': total_messages,
+                'recent_messages': recent_messages
+            }
+        except Exception as e:
+            print(f"[ERROR] Getting session stats: {e}")
+            return {
+                'active_sessions_count': 0,
+                'total_messages': 0,
+                'recent_messages': 0
+            }
+
+    def get_active_chat_content(self) -> dict:
+        """Get full content of most recently active chat session"""
+        try:
+            conn = sqlite3.connect(self.db.db_path)
+            cursor = conn.cursor()
+            
+            # Get most recently active session
+            cursor.execute('''
+                SELECT session_id, chat_platform, chat_title, participant_name,
+                       last_activity, total_messages, chat_url
+                FROM chat_sessions 
+                WHERE status = 'active' OR status IS NULL
+                ORDER BY last_activity DESC, created_at DESC
+                LIMIT 1
+            ''')
+            
+            session_row = cursor.fetchone()
+            if not session_row:
+                return None
+            
+            session_id = session_row[0]
+            
+            # Get all messages for this session
+            cursor.execute('''
+                SELECT sender, sender_type, message_text, timestamp, message_order
+                FROM chat_messages 
+                WHERE session_id = ?
+                ORDER BY message_order ASC
+                LIMIT 100
+            ''', (session_id,))
+            
+            messages = []
+            for msg_row in cursor.fetchall():
+                messages.append({
+                    'sender': msg_row[0],
+                    'sender_type': msg_row[1],
+                    'text': msg_row[2],
+                    'timestamp': msg_row[3],
+                    'order': msg_row[4]
+                })
+            
+            return {
+                'session_id': session_id,
+                'platform': session_row[1] or 'unknown',
+                'title': session_row[2] or 'Unknown Chat',
+                'participant': session_row[3] or 'Unknown',
+                'last_activity': session_row[4] or datetime.now().isoformat(),
+                'total_messages': session_row[5] or len(messages),
+                'url': session_row[6] or '',
+                'messages': messages
+            }
+        except Exception as e:
+            print(f"[ERROR] Getting active chat content: {e}")
+            return None
+    
+    def generate_dashboard(self, session_id=None):
+        """Generate enhanced interactive dashboard HTML with session stats"""
+        try:
+            # Get session stats
+            session_stats = self.get_session_stats()
+            
+            # Get active chat content  
+            active_chat = self.get_active_chat_content()
+            
+            # Get existing dashboard data for AI suggestions
             dashboard_data = self.db.get_dashboard_data()
-            print(f"Dashboard data keys: {list(dashboard_data.keys())}")
+            
+            print(f"[INFO] Session stats: {session_stats}")
+            print(f"[INFO] Active chat: {bool(active_chat)}")
+            if active_chat:
+                print(f"[INFO] Active chat session: {active_chat['session_id']}")
+                print(f"[INFO] Messages in active chat: {len(active_chat['messages'])}")
             
             # Load temporary AI suggestions if they exist
             temp_ai_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'temp_ai_suggestions.json')
@@ -48,16 +149,11 @@ class ChatDashboardGenerator:
                                 'session_id': temp_suggestions.get('session_id', 'unknown'),
                                 'suggestion_type': 'all-modes',
                                 'confidence': temp_suggestions.get('confidence', 0.0),
-                                'generated_at': temp_suggestions.get('created_at', datetime.now().isoformat()),
-                                'all_modes': temp_suggestions.get('all_modes', {}),
-                                'phase': temp_suggestions.get('phase', 'Unknown'),
-                                'model_used': temp_suggestions.get('model_used', 'unknown'),
-                                'detection_method': temp_suggestions.get('detection_method', 'unknown'),
-                                'total_options': temp_suggestions.get('total_options', 0),
-                                'used': False
+                                'all_modes': temp_suggestions['all_modes'],
+                                'timestamp': temp_suggestions.get('timestamp', datetime.now().isoformat())
                             }]
                         elif 'template_response' in temp_suggestions and 'ai_response' in temp_suggestions:
-                            # New "both" format with template and AI responses
+                            # "Both" format with template and AI responses
                             print("[INFO] Loading 'both' mode AI suggestions (Template + AI)")
                             ai_suggestions = [{
                                 'session_id': temp_suggestions.get('session_id', 'unknown'),
@@ -70,31 +166,26 @@ class ChatDashboardGenerator:
                                 'model_used': temp_suggestions.get('model_used', 'unknown'),
                                 'used': False
                             }]
+                        elif isinstance(temp_suggestions, list) and len(temp_suggestions) > 0:
+                            # Old format - single suggestion
+                            print("[INFO] Loading legacy AI suggestions")
+                            ai_suggestions = temp_suggestions
                         else:
-                            # Old format with single mode
-                            print("[INFO] Loading single-mode AI suggestions")
-                            ai_suggestions = [{
-                                'session_id': temp_suggestions.get('session_id', 'unknown'),
-                                'suggestion_type': temp_suggestions.get('suggestion_type', 'unknown'),
-                                'confidence': temp_suggestions.get('confidence', 0.0),
-                                'generated_at': temp_suggestions.get('created_at', datetime.now().isoformat()),
-                                'responses': temp_suggestions.get('responses', []),
-                                'used': False
-                            }] if temp_suggestions.get('responses') else []
+                            print("[WARNING] Unrecognized AI suggestions format")
+                            
                 except Exception as e:
-                    print(f"[ERROR] Error loading temp AI suggestions: {e}")
-                    ai_suggestions = []
+                    print(f"[ERROR] Loading AI suggestions: {e}")
             
-            # Replace recent_responses with temp AI suggestions
-            dashboard_data['recent_responses'] = ai_suggestions
-            print(f"AI suggestions loaded: {len(ai_suggestions)}")
+            # Create enhanced dashboard data structure
+            enhanced_data = {
+                'session_stats': session_stats,
+                'active_chat': active_chat,
+                'ai_suggestions': ai_suggestions,
+                'all_sessions': dashboard_data.get('active_sessions', [])
+            }
             
-            if not dashboard_data:
-                return self.generate_empty_dashboard()
-            
-            # Generate HTML
-            print("Creating dashboard HTML...")
-            html_content = self.create_dashboard_html(dashboard_data)
+            # Generate new HTML format
+            html_content = self.create_enhanced_dashboard_html(enhanced_data)
             
             # Save to file
             dashboard_path = os.path.join(os.path.dirname(__file__), 'chat_dashboard.html')
@@ -102,23 +193,22 @@ class ChatDashboardGenerator:
             with open(dashboard_path, 'w', encoding='utf-8') as f:
                 f.write(html_content)
             
-            print(f"[OK] Dashboard generated: {dashboard_path}")
-            
-            return {
+            result = {
                 'success': True,
                 'dashboard_path': dashboard_path,
-                'sessions_count': len(dashboard_data['active_sessions']),
-                'total_messages': dashboard_data['stats']['total_messages'],
-                'ai_suggestions': len(dashboard_data['recent_responses']),
+                'active_sessions_count': session_stats['active_sessions_count'],
+                'total_messages': session_stats['total_messages'],
+                'recent_messages': session_stats['recent_messages'],
+                'active_chat_id': active_chat['session_id'] if active_chat else None,
                 'timestamp': datetime.now().isoformat()
             }
             
+            print(f"[SUCCESS] Enhanced dashboard generated: {dashboard_path}")
+            return result
+            
         except Exception as e:
-            print(f"[ERROR] Dashboard generation error: {e}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
+            print(f"[ERROR] Enhanced dashboard generation error: {e}")
+            return {'success': False, 'error': str(e)}
     
     def create_dashboard_html(self, data):
         """Create the complete dashboard HTML"""
@@ -828,6 +918,573 @@ class ChatDashboardGenerator:
             'empty': True,
             'timestamp': datetime.now().isoformat()
         }
+
+    def create_enhanced_dashboard_html(self, enhanced_data: dict) -> str:
+        """Create enhanced HTML dashboard with session stats and active chat"""
+        
+        session_stats = enhanced_data['session_stats']
+        active_chat = enhanced_data['active_chat']
+        ai_suggestions = enhanced_data.get('ai_suggestions', [])
+        
+        # Generate active chat display
+        chat_display = self.generate_chat_display(active_chat)
+        
+        # Generate AI suggestions HTML
+        ai_suggestions_html = self.generate_enhanced_ai_suggestions_html(ai_suggestions)
+        
+        html_content = f"""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Dashboard</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        body {{
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+        }}
+        
+        .dashboard {{
+            display: flex;
+            min-height: 100vh;
+            max-width: 1400px;
+            margin: 0 auto;
+            gap: 20px;
+            padding: 20px;
+        }}
+        
+        .sidebar {{
+            width: 300px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        }}
+        
+        .main-content {{
+            flex: 1;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+        }}
+        
+        .stat-card {{
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3);
+        }}
+        
+        .stat-number {{
+            font-size: 2.5rem;
+            font-weight: bold;
+            display: block;
+        }}
+        
+        .stat-label {{
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 5px;
+        }}
+        
+        .continue-btn {{
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            padding: 15px 20px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            width: 100%;
+            transition: transform 0.2s;
+        }}
+        
+        .continue-btn:hover {{
+            transform: translateY(-2px);
+        }}
+        
+        .chat-container {{
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-height: 75vh;
+        }}
+        
+        .chat-header {{
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 12px 12px 0 0;
+            margin-bottom: 0;
+        }}
+        
+        .chat-info {{
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 5px;
+        }}
+        
+        .messages-container {{
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 0 0 12px 12px;
+            border: 1px solid #dee2e6;
+            border-top: none;
+        }}
+        
+        .message {{
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            border-radius: 18px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }}
+        
+        .message.user, .message.outgoing {{
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }}
+        
+        .message.client, .message.incoming {{
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }}
+        
+        .message.bot {{
+            background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+            color: white;
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }}
+        
+        .message.unknown {{
+            background: linear-gradient(135deg, #9E9E9E 0%, #757575 100%);
+            color: white;
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }}
+        
+        .message-sender {{
+            font-size: 0.75rem;
+            font-weight: bold;
+            opacity: 0.8;
+            margin-bottom: 4px;
+        }}
+        
+        .message-text {{
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }}
+        
+        .no-chat {{
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 50px 20px;
+        }}
+        
+        .timestamp {{
+            font-size: 0.7rem;
+            opacity: 0.6;
+            margin-top: 5px;
+        }}
+        
+        .title {{
+            color: #2c3e50;
+            margin-bottom: 25px;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }}
+        
+        ::-webkit-scrollbar {{
+            width: 6px;
+        }}
+        
+        ::-webkit-scrollbar-track {{
+            background: #f1f1f1;
+            border-radius: 3px;
+        }}
+        
+        ::-webkit-scrollbar-thumb {{
+            background: #c1c1c1;
+            border-radius: 3px;
+        }}
+        
+        ::-webkit-scrollbar-thumb:hover {{
+            background: #a8a8a8;
+        }}
+        
+        .ai-suggestions-section {{
+            margin-top: 25px;
+            padding: 25px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        }}
+        
+        .ai-suggestions-section h3 {{
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-align: center;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 15px;
+        }}
+        
+        .ai-suggestion-card {{
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e9ecef;
+        }}
+        
+        .suggestion-info {{
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }}
+        
+        .phase-badge {{
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            box-shadow: 0 3px 10px rgba(76, 175, 80, 0.3);
+        }}
+        
+        .confidence-badge {{
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            box-shadow: 0 3px 10px rgba(33, 150, 243, 0.3);
+        }}
+        
+        .response-option {{
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+        }}
+        
+        .response-option:hover {{
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border-color: #2196F3;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(33, 150, 243, 0.3);
+        }}
+        
+        .template-response {{
+            border-left: 6px solid #4CAF50;
+            background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%);
+        }}
+        
+        .template-response:hover {{
+            background: linear-gradient(135deg, #c8e6c9 0%, #dcedc8 100%);
+            border-color: #4CAF50;
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.3);
+        }}
+        
+        .ai-response {{
+            border-left: 6px solid #FF9800;
+            background: linear-gradient(135deg, #fff3e0 0%, #ffecb3 100%);
+        }}
+        
+        .ai-response:hover {{
+            background: linear-gradient(135deg, #ffe0b2 0%, #ffcc02 100%);
+            border-color: #FF9800;
+            box-shadow: 0 8px 25px rgba(255, 152, 0, 0.3);
+        }}
+        
+        .response-option strong {{
+            display: block;
+            margin-bottom: 10px;
+            color: #2c3e50;
+            font-size: 1.1rem;
+        }}
+        
+        .response-option p {{
+            margin: 0;
+            color: #555;
+            font-size: 1rem;
+            line-height: 1.5;
+            flex-grow: 1;
+        }}
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="sidebar">
+            <h1 class="title">📱 AI Chat</h1>
+            
+            <button class="continue-btn" onclick="continueWorkflow()">🔄 Continue Workflow</button>
+            
+            <div class="stat-card">
+                <span class="stat-number">{session_stats['active_sessions_count']}</span>
+                <div class="stat-label">Active Chat Sessions</div>
+            </div>
+            
+            <div class="stat-card" style="background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);">
+                <span class="stat-number">{session_stats['total_messages']}</span>
+                <div class="stat-label">Total Messages</div>
+            </div>
+            
+            <div class="stat-card" style="background: linear-gradient(135deg, #FF5722 0%, #D84315 100%);">
+                <span class="stat-number">{session_stats['recent_messages']}</span>
+                <div class="stat-label">Recent Messages (1h)</div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            {chat_display}
+            {ai_suggestions_html}
+        </div>
+    </div>
+    
+    <script>
+        // Auto-scroll to bottom of chat
+        const messagesContainer = document.querySelector('.messages-container');
+        if (messagesContainer) {{
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }}
+        
+        function continueWorkflow() {{
+            // Trigger N8N workflow via webhook or HTTP call
+            fetch('http://localhost:5678/webhook/continue-chat-workflow', {{
+                method: 'POST',
+                headers: {{
+                    'Content-Type': 'application/json'
+                }},
+                body: JSON.stringify({{
+                    action: 'continue_chat_workflow',
+                    timestamp: new Date().toISOString()
+                }})
+            }})
+            .then(response => response.json())
+            .then(data => {{
+                console.log('Workflow triggered:', data);
+                // Show feedback
+                const btn = document.querySelector('.continue-btn');
+                btn.textContent = '✅ Workflow Started';
+                setTimeout(() => {{
+                    btn.textContent = '🔄 Continue Workflow';
+                }}, 2000);
+            }})
+            .catch(error => {{
+                console.error('Error triggering workflow:', error);
+                const btn = document.querySelector('.continue-btn');
+                btn.textContent = '❌ Error';
+                setTimeout(() => {{
+                    btn.textContent = '🔄 Continue Workflow';
+                }}, 2000);
+            }});
+        }}
+        
+        function copyResponse(text) {{
+            // Copy text to clipboard
+            navigator.clipboard.writeText(text).then(() => {{
+                // Show feedback
+                console.log('Response copied to clipboard');
+                
+                // Create temporary notification
+                const notification = document.createElement('div');
+                notification.textContent = '✅ Copied to clipboard!';
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 25px;
+                    font-weight: bold;
+                    z-index: 1000;
+                    box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3);
+                    transform: translateX(100%);
+                    transition: transform 0.3s ease;
+                `;
+                document.body.appendChild(notification);
+                
+                // Animate in
+                setTimeout(() => {{
+                    notification.style.transform = 'translateX(0)';
+                }}, 10);
+                
+                // Remove after 3 seconds
+                setTimeout(() => {{
+                    notification.style.transform = 'translateX(100%)';
+                    setTimeout(() => {{
+                        document.body.removeChild(notification);
+                    }}, 300);
+                }}, 3000);
+                
+            }}).catch(err => {{
+                console.error('Failed to copy text: ', err);
+                // Fallback for older browsers
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                // Show fallback notification
+                alert('Text copied to clipboard!');
+            }});
+        }}
+    </script>
+</body>
+</html>"""
+        
+        return html_content
+
+    def generate_enhanced_ai_suggestions_html(self, suggestions):
+        """Generate AI suggestions HTML for enhanced dashboard"""
+        if not suggestions:
+            return """
+                <div class="ai-suggestions-section">
+                    <h3>🤖 AI Suggestions</h3>
+                    <p style="opacity: 0.8; font-size: 0.9rem;">AI suggestions will appear here after phase detection.</p>
+                </div>
+            """
+        
+        suggestions_html = """
+            <div class="ai-suggestions-section">
+                <h3>🤖 AI Suggestions</h3>
+        """
+        
+        for suggestion in suggestions:
+            if suggestion.get('suggestion_type') == 'both':
+                # Both format with template and AI responses
+                template_response = suggestion.get('template_response', '')
+                ai_response = suggestion.get('ai_response', '')
+                phase = suggestion.get('phase', 'Unknown')
+                confidence = suggestion.get('confidence', 0.0)
+                
+                suggestions_html += f"""
+                    <div class="ai-suggestion-card">
+                        <div class="suggestion-info">
+                            <span class="phase-badge">Phase: {phase}</span>
+                            <span class="confidence-badge">{confidence*100:.1f}%</span>
+                        </div>
+                """
+                
+                if template_response:
+                    suggestions_html += f"""
+                        <div class="response-option template-response" onclick="copyResponse('{template_response.replace("'", "\\'")}')">
+                            <strong>📝 Template Response</strong>
+                            <p>{template_response}</p>
+                        </div>
+                    """
+                
+                if ai_response:
+                    suggestions_html += f"""
+                        <div class="response-option ai-response" onclick="copyResponse('{ai_response.replace("'", "\\'")}')">
+                            <strong>🤖 AI Generated Response</strong>
+                            <p>{ai_response}</p>
+                        </div>
+                    """
+                
+                suggestions_html += """
+                    </div>
+                """
+            
+        suggestions_html += """
+            </div>
+        """
+        
+        return suggestions_html
+
+    def generate_chat_display(self, active_chat):
+        """Generate HTML for active chat display"""
+        if not active_chat or not active_chat.get('messages'):
+            return """
+                <div class="no-chat">
+                    <h2>No Active Chat Sessions</h2>
+                    <p>Start a chat session to see messages here.</p>
+                </div>
+            """
+        
+        chat_html = f"""
+            <div class="chat-container">
+                <div class="chat-header">
+                    <h2>{active_chat['title']}</h2>
+                    <div class="chat-info">
+                        {active_chat['platform'].title()} • {active_chat['participant']} • 
+                        {active_chat['total_messages']} messages
+                    </div>
+                </div>
+                
+                <div class="messages-container">
+        """
+        
+        for message in active_chat['messages']:
+            sender_class = message['sender_type']
+            sender_display = message['sender']
+            
+            # Format timestamp
+            try:
+                if isinstance(message['timestamp'], str):
+                    timestamp = datetime.fromisoformat(message['timestamp'].replace('Z', '')).strftime('%H:%M')
+                else:
+                    timestamp = str(message['timestamp'])[:5]
+            except:
+                timestamp = ''
+            
+            chat_html += f"""
+                    <div class="message {sender_class}">
+                        <div class="message-sender">{sender_display}</div>
+                        <div class="message-text">{message['text']}</div>
+                        {f'<div class="timestamp">{timestamp}</div>' if timestamp else ''}
+                    </div>
+            """
+        
+        chat_html += """
+                </div>
+            </div>
+        """
+        
+        return chat_html
 
 def main():
     """Main dashboard generation function"""

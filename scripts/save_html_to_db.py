@@ -14,8 +14,6 @@ if sys.platform == "win32":
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from data.database_manager import UpworkDatabase # Import custom class for database management
-
 """
 Script to save latest raw HTML file to database
 Called from n8n workflow after JS scraper
@@ -24,7 +22,7 @@ import sys
 import os
 import json
 from datetime import datetime
-from data.database_manager import UpworkDatabase # Import custom class for database management 
+from data.database_manager import JobDatabase # Import custom class for database management 
 
 # Set UTF-8 encoding for console output
 if sys.platform == "win32":
@@ -92,7 +90,7 @@ def save_html_to_database(html_filepath):
     """Save HTML file to database and return result"""
     try:
         # inside var put database component
-        db = UpworkDatabase()
+        db = JobDatabase()
         
         # inside var put filepath of HTML file
         filename = os.path.basename(html_filepath)
