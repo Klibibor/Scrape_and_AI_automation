@@ -40,7 +40,7 @@ class SmartChatResponse:
             print("Loading GPT-2...")
             # Check for trained model first
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            trained_model_path = os.path.join(project_root, "ai", "trained_models", "final_chat_model", "trained_chat_model_1.0")
+            trained_model_path = os.path.join(project_root, "ai", "chat_bot_trainer", "trained_models", "final_chat_model", "trained_chat_model_1.0")
             # if trained model is found set model_path to it
             if os.path.exists(trained_model_path):
                 print("🎯 Using TRAINED model for better responses")

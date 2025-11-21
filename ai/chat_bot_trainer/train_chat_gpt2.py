@@ -87,7 +87,7 @@ class JSONChatDataset(Dataset):
     def _find_training_file(self):
         """Find the best available training file"""
         # try to find files inside parsed_data_dir
-        parsed_data_dir = "ai/training_data/parsed_data"
+        parsed_data_dir = "ai/chat_bot_trainer/training_data"
         # if parsed_data_dir does not exist raise error
         if not os.path.exists(parsed_data_dir):
             raise FileNotFoundError(f"Directory not found: {parsed_data_dir}")
@@ -141,7 +141,7 @@ class JSONChatDataset(Dataset):
 class ChatGPT2Trainer:
     """Handles loading GPT-2, training on dataset, and returning training metadata."""
     # setup components for training
-    def __init__(self, model_name="gpt2", output_dir="ai/trained_models"):
+    def __init__(self, model_name="gpt2", output_dir="ai/chat_bot_trainer/trained_models"):
         # setup model
         self.model_name = model_name
         # setup output directory

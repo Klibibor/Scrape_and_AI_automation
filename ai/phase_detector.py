@@ -21,7 +21,7 @@ class PhaseClassifier(nn.Module):
     #2. dropout
     #3. classifier
     def __init__(self, n_classes=8, dropout=0.3):
-        # Call the parent constructor
+        # Call parent constructor (required for nn.Module)
         super(PhaseClassifier, self).__init__()
         # Initialize BERT model
         self.bert = BertModel.from_pretrained('bert-base-uncased')
@@ -58,7 +58,15 @@ class PhaseDetector:
     #6. load the trained version of the model
     #7. move model to device
     #8. set model to evaluation mode
-    def __init__(self, model_dir):
+    def __init__(self, model_dir=None):
+        # Use default path if none provided
+        if model_dir is None:
+            model_dir = os.path.join(
+                os.path.dirname(__file__), 
+                'phase_detector_trainer', 
+                'trained_models', 
+                'phase_classifier_v1'
+            )
         # var to hold directory to model
         self.model_dir = model_dir
         # var to hold device that will be used for running model cuda (graphics card) or cpu
@@ -158,11 +166,16 @@ def test_detector():
     print("TESTING PHASE DETECTOR")
     print("=" * 60)
     
-    model_dir = os.path.join(os.path.dirname(__file__), 'trained_models', 'phase_classifier_v1')
+    model_dir = os.path.join(
+        os.path.dirname(__file__), 
+        'phase_detector_trainer', 
+        'trained_models', 
+        'phase_classifier_v1'
+    )
     
     if not os.path.exists(model_dir):
         print(f"[ERROR] Model not found at {model_dir}")
-        print("[INFO] Please train the model first using train_phase_classifier.py")
+        print("[INFO] Please train the model first using phase_detector_trainer/train_phase_classifier.py")
         return
     
     detector = PhaseDetector(model_dir)

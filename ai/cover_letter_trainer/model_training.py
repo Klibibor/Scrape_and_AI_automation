@@ -30,23 +30,58 @@ logger = logging.getLogger(__name__)
 class CoverLetterTrainer:
     """Trainer for fine-tuning GPT-2 models on cover letter data"""
     # attributes that will be used in training
-    def __init__(self, base_model: str = "gpt2", output_dir: str = "./trained_models"):
-        # name of a model that will be trained
+    def __init__(self, base_model: str = "gpt2", output_dir: str = None, training_data_dir: str = None):
+        """Initialize CoverLetterTrainer with training data path"""
         self.base_model = base_model
-        # directory where trained models will be saved
+        
+        # Set default output directory
+        if output_dir is None:
+            output_dir = os.path.join(
+                os.path.dirname(__file__),  # ai/cover_letter_trainer/
+                'trained_models'            # ai/cover_letter_trainer/trained_models/
+            )
+        
         self.output_dir = Path(output_dir)
-        # create output directory if it doesn't exist
-        self.output_dir.mkdir(exist_ok=True)
-        # placeholders for model 
+        
+        # Set default path to training_data.json
+        if training_data_dir is None:
+            training_data_dir = os.path.join(
+                os.path.dirname(__file__),  # ai/cover_letter_trainer/
+                'training_data'             # ai/cover_letter_trainer/training_data/
+            )
+        
+        self.training_data_dir = Path(training_data_dir)
+        
+        # Initialize model components (will be loaded later)
         self.model = None
-        # placeholders for tokenizer
         self.tokenizer = None
-        # device setup for training (force CPU for compatibility)
-        self.device = torch.device('cpu')
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Create directories if they don't exist
+        self.output_dir.mkdir(exist_ok=True)
+        self.training_data_dir.mkdir(exist_ok=True)
 
         # logging info
         logger.info(f"Initialized trainer with base model: {base_model}")
         logger.info(f"Using device: {self.device} (CPU-only training)")
+
+    def load_training_data(self, filename: str = "training_data.json") -> List[Dict[str, Any]]:
+        """Load training data from JSON file"""
+        data_file = self.training_data_dir / filename
+        
+        if not data_file.exists():
+            logger.warning(f"Training data file not found: {data_file}")
+            raise FileNotFoundError(f"Training data file not found: {data_file}")
+        
+        try:
+            with open(data_file, 'r', encoding='utf-8') as f:
+                training_data = json.load(f)
+            logger.info(f"Loaded {len(training_data)} training examples from {filename}")
+            return training_data
+        except Exception as e:
+            logger.error(f"Error loading training data: {e}")
+            raise
+
 
 # ======== 🧱 load base model ======
     # function that takes initialized model and tokenizer and loads them to device
@@ -292,3 +327,71 @@ class CoverLetterTrainer:
         except Exception as e:
             logger.error(f"Error during evaluation: {e}")
             raise
+
+# ==== MAIN EXECUTION BLOCK ====
+if __name__ == "__main__":
+    import os
+    
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    
+    print("🚀 Cover Letter Trainer")
+    print("=" * 50)
+
+    try:
+        # Initialize trainer
+        trainer = CoverLetterTrainer()
+        print(f"✅ Trainer initialized")
+        print(f"📂 Training data directory: {trainer.training_data_dir}")
+        print(f"📂 Output directory: {trainer.output_dir}")
+        
+        # Check if training data exists
+        training_data_file = trainer.training_data_dir / "training_data.json"
+        if not training_data_file.exists():
+            print(f"❌ Training data not found: {training_data_file}")
+            print("💡 Please create training_data.json file in the training_data directory")
+            exit(1)
+        
+        # Load training data
+        training_data = trainer.load_training_data()
+        print(f"✅ Loaded {len(training_data)} training examples")
+        
+        # Show sample data
+        if training_data:
+            sample = training_data[0]
+            print(f"\n📋 Sample training example:")
+            print(f"   Job Title: {sample.get('job_title', 'N/A')}")
+            print(f"   Company: {sample.get('company', 'N/A')}")
+            print(f"   Skills: {sample.get('skills', [])}")
+            print(f"   Cover Letter Length: {len(sample.get('cover_letter', ''))} characters")
+        
+        # Ask user if they want to start training
+        response = input(f"\n➡️  Start training with {len(training_data)} examples? (y/N): ")
+        
+        if response.lower() == 'y':
+            print("\n🔥 Starting model training...")
+            
+            # Start training
+            final_model_path = trainer.train_model(
+                training_data=training_data,
+                model_name="custom_cover_letter_model",
+                num_epochs=3,
+                learning_rate=5e-5,
+                batch_size=2
+            )
+            
+            print(f"\n🎉 Training completed!")
+            print(f"📁 Model saved to: {final_model_path}")
+            
+        else:
+            print("❌ Training cancelled")
+            
+    except FileNotFoundError as e:
+        print(f"❌ File not found: {e}")
+        print("💡 Make sure training_data.json exists in ai/cover_letter_trainer/training_data/")
+    except Exception as e:
+        print(f"❌ Training failed: {e}")
+        logging.error(f"Training failed: {e}")

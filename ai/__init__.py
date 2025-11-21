@@ -1,12 +1,11 @@
 """
-AI Cover Letter Generation Module
-=================================
-Provides AI-powered cover letter generation for Upwork jobs
+AI Module for Upwork Notification System
+========================================
+Provides AI-powered functionality for job processing and communication
 """
 
-# CoverLetterGenerator removed - using SmartCoverLetterGenerator in scripts/ instead
+# Import available modules
 from .local_ai import LocalAIProvider
 from .openai import OpenAIProvider
-from .model_training import CoverLetterTrainer
 
-__all__ = ['LocalAIProvider', 'OpenAIProvider', 'CoverLetterTrainer']
+__all__ = ['LocalAIProvider', 'OpenAIProvider']

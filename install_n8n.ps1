@@ -220,10 +220,12 @@ $workflowFiles = @(
 )
 
 $foundWorkflows = 0
+$workflowsFound = @()
 foreach ($workflow in $workflowFiles) {
     if (Test-Path $workflow) {
         Write-Host "   Found: $workflow" -ForegroundColor Green
         $foundWorkflows++
+        $workflowsFound += $workflow
     }
     else {
         Write-Host "    Missing: $workflow" -ForegroundColor Yellow
@@ -231,7 +233,42 @@ foreach ($workflow in $workflowFiles) {
 }
 
 if ($foundWorkflows -gt 0) {
-    Write-Host "   $foundWorkflows workflow(s) ready to import into N8N" -ForegroundColor Green
+    Write-Host "   $foundWorkflows workflow(s) found - processing paths..." -ForegroundColor Green
+    
+    # Create n8n directory and process workflows
+    $n8nDir = Join-Path $newBasePath "n8n"
+    if (-not $DryRun) {
+        if (-not (Test-Path $n8nDir)) {
+            New-Item -ItemType Directory -Path $n8nDir -Force | Out-Null
+            Write-Host "   Created n8n/ directory" -ForegroundColor Green
+        }
+        
+        # Process each workflow file  
+        foreach ($workflow in $workflowsFound) {
+            $destinationPath = Join-Path $n8nDir $workflow
+            $originalContent = Get-Content $workflow -Raw -Encoding UTF8
+            
+            # Replace hardcoded paths - safe string replacement
+            $content = $originalContent
+            $oldPathWindows = "E:\\Repoi\\UpworkNotif"
+            $oldPathUnix = "E:/Repoi/UpworkNotif" 
+            $newPathJson = $newBasePath -replace '\\', '\\'
+            
+            # JSON-safe path replacement
+            $content = $content.Replace($oldPathWindows, $newPathJson)
+            $content = $content.Replace($oldPathUnix, $newPathJson)
+            $content = $content.Replace("E:\Repoi\UpworkNotif", $newPathJson)
+            
+            # Save updated workflow
+            Set-Content -Path $destinationPath -Value $content -Encoding UTF8
+            Write-Host "     Processed: $workflow -> n8n/" -ForegroundColor Green
+        }
+        
+        Write-Host "   All workflows updated with correct paths!" -ForegroundColor Cyan
+    }
+    else {
+        Write-Host "   [DRY RUN] Would create n8n/ directory and process $foundWorkflows workflows" -ForegroundColor Cyan
+    }
 }
 else {
     Write-Host "    No workflow files found in current directory" -ForegroundColor Yellow

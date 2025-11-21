@@ -71,7 +71,7 @@ class SmartCoverLetterGenerator:
     def __init__(self):
         """Initialize generator"""
         # path to trained model
-        self.model_path = "trained_models/advanced_cover_letter_model/final"
+        self.model_path = "ai/cover_letter_trainer/trained_models/custom_cover_letter_model/final"
         # model and tokenizer placeholders
         self.model = None
         self.tokenizer = None
@@ -159,36 +159,49 @@ class SmartCoverLetterGenerator:
     # 1. check if there is a trained model at model_path
     # 2. load tokenizer from model_path
     # 3. load trained model from model_path
-    # 4. set model to eval mode
+    # 4. if not found load base GPT-2 model and tokenizer
+    # 5. set padding token if not set
+    # 6. set model to eval mode
     def load_model_temporarily(self):
-        # try to initialize trained model
+        """Load model with fallback to base GPT-2 if trained model not found"""
         try:
-            # check if model path exists
+            # First try to load trained model
             model_path = Path(self.model_path)
-            if not model_path.exists():
-                print(f"❌ Model not found at {model_path}")
-                return False
             
-            print(f"🔄 Loading trained model...")
+            if model_path.exists():
+                print(f"🔄 Loading trained model...")
+                
+                # Load trained model
+                self.tokenizer = GPT2Tokenizer.from_pretrained(str(model_path))
+                self.model = GPT2LMHeadModel.from_pretrained(
+                    str(model_path),
+                    torch_dtype=torch.float32,
+                    low_cpu_mem_usage=True
+                )
+                
+                print(f"✅ Trained model loaded")
+                
+            else:
+                print(f"⚠️ Trained model not found at {model_path}")
+                print(f"🔄 Falling back to base GPT-2 model...")
+                
+                # Fallback to base GPT-2
+                self.tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+                self.model = GPT2LMHeadModel.from_pretrained(
+                    "gpt2",
+                    torch_dtype=torch.float32,
+                    low_cpu_mem_usage=True
+                )
+                
+                print(f"✅ Base GPT-2 model loaded (fallback)")
             
-            # Load tokenizer
-            self.tokenizer = GPT2Tokenizer.from_pretrained(str(model_path))
-            # get pad token or fallback to eos token
+            # Common setup for both models
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
             
-            # Fix attention mask issue by explicitly setting pad token
             self.tokenizer.padding_side = "left"
-
-            # Load trained model and set to eval mode
-            self.model = GPT2LMHeadModel.from_pretrained(
-                str(model_path),
-                torch_dtype=torch.float32,
-                low_cpu_mem_usage=True
-            )
             self.model.eval()
             
-            print(f"✅ Model loaded")
             return True
             
         except Exception as e:

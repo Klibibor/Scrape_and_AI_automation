@@ -34,7 +34,7 @@ class StandalonePhaseDetector:
         # initialize database
         self.db = ChatDatabase(db_path)
         # var to hold model dir
-        model_dir = os.path.join(project_root, "ai", "trained_models", "phase_classifier_v1")
+        model_dir = os.path.join(project_root, "ai","phase_detector_trainer", "trained_models", "phase_classifier_v1")
         # log
         print("\n" + "="*60)
         print("STANDALONE PHASE DETECTOR")

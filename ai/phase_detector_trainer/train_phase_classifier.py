@@ -314,7 +314,7 @@ def main():
     
     # Configuration
     # 1. define data file path
-    DATA_FILE = os.path.join(os.path.dirname(__file__), 'phase_training_data.json')
+    DATA_FILE = os.path.join(os.path.dirname(__file__), "training_data", "phase_training_data.json")
     # 2. define save directory
     SAVE_DIR = os.path.join(os.path.dirname(__file__), 'trained_models', 'phase_classifier_v1')
     # 3. define batch size, how many data points will be processed together
