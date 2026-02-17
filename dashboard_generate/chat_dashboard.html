@@ -1,0 +1,596 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .dashboard {
+            display: flex;
+            min-height: 100vh;
+            max-width: 1400px;
+            margin: 0 auto;
+            gap: 20px;
+            padding: 20px;
+        }
+        
+        .sidebar {
+            width: 300px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        }
+        
+        .main-content {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3);
+        }
+        
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            display: block;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        
+        .continue-btn {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            padding: 15px 20px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            width: 100%;
+            transition: transform 0.2s;
+        }
+        
+        .continue-btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-height: 75vh;
+        }
+        
+        .chat-header {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 12px 12px 0 0;
+            margin-bottom: 0;
+        }
+        
+        .chat-info {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+        
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 0 0 12px 12px;
+            border: 1px solid #dee2e6;
+            border-top: none;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 16px;
+            border-radius: 18px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        
+        .message.user, .message.outgoing {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .message.client, .message.incoming {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }
+        
+        .message.bot {
+            background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+            color: white;
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }
+        
+        .message.unknown {
+            background: linear-gradient(135deg, #9E9E9E 0%, #757575 100%);
+            color: white;
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }
+        
+        .message-sender {
+            font-size: 0.75rem;
+            font-weight: bold;
+            opacity: 0.8;
+            margin-bottom: 4px;
+        }
+        
+        .message-text {
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+        
+        .no-chat {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            padding: 50px 20px;
+        }
+        
+        .timestamp {
+            font-size: 0.7rem;
+            opacity: 0.6;
+            margin-top: 5px;
+        }
+        
+        .title {
+            color: #2c3e50;
+            margin-bottom: 25px;
+            font-size: 1.8rem;
+            font-weight: 600;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 3px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8;
+        }
+        
+        .ai-suggestions-section {
+            margin-top: 25px;
+            padding: 25px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+        }
+        
+        .ai-suggestions-section h3 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: 600;
+            text-align: center;
+            border-bottom: 2px solid #eee;
+            padding-bottom: 15px;
+        }
+        
+        .ai-suggestion-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e9ecef;
+        }
+        
+        .suggestion-info {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .phase-badge {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            box-shadow: 0 3px 10px rgba(76, 175, 80, 0.3);
+        }
+        
+        .confidence-badge {
+            background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            box-shadow: 0 3px 10px rgba(33, 150, 243, 0.3);
+        }
+        
+        .response-option {
+            background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .response-option:hover {
+            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+            border-color: #2196F3;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(33, 150, 243, 0.3);
+        }
+        
+        .template-response {
+            border-left: 6px solid #4CAF50;
+            background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%);
+        }
+        
+        .template-response:hover {
+            background: linear-gradient(135deg, #c8e6c9 0%, #dcedc8 100%);
+            border-color: #4CAF50;
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.3);
+        }
+        
+        .ai-response {
+            border-left: 6px solid #FF9800;
+            background: linear-gradient(135deg, #fff3e0 0%, #ffecb3 100%);
+        }
+        
+        .ai-response:hover {
+            background: linear-gradient(135deg, #ffe0b2 0%, #ffcc02 100%);
+            border-color: #FF9800;
+            box-shadow: 0 8px 25px rgba(255, 152, 0, 0.3);
+        }
+        
+        .response-option strong {
+            display: block;
+            margin-bottom: 10px;
+            color: #2c3e50;
+            font-size: 1.1rem;
+        }
+        
+        .response-option p {
+            margin: 0;
+            color: #555;
+            font-size: 1rem;
+            line-height: 1.5;
+            flex-grow: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="sidebar">
+            <h1 class="title">📱 AI Chat</h1>
+            
+            <button class="continue-btn" onclick="continueWorkflow()">🔄 Continue Workflow</button>
+            
+            <div class="stat-card">
+                <span class="stat-number">1</span>
+                <div class="stat-label">Active Chat Sessions</div>
+            </div>
+            
+            <div class="stat-card" style="background: linear-gradient(135deg, #9C27B0 0%, #7B1FA2 100%);">
+                <span class="stat-number">19</span>
+                <div class="stat-label">Total Messages</div>
+            </div>
+            
+            <div class="stat-card" style="background: linear-gradient(135deg, #FF5722 0%, #D84315 100%);">
+                <span class="stat-number">19</span>
+                <div class="stat-label">Recent Messages (1h)</div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            
+            <div class="chat-container">
+                <div class="chat-header">
+                    <h2>Upwork Chat Session</h2>
+                    <div class="chat-info">
+                        Upwork • Unknown • 
+                        19 messages
+                    </div>
+                </div>
+                
+                <div class="messages-container">
+        
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">More options</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">Perfect, I’m ready to meet up with everyone and start working anytime</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">Most of the day I’m either on my computer or checking messages on my phone, so I should be responsive, in worst case within about an hour.Regarding communication, I’ve used plenty of chat platforms, so I’m flexible with whatever the team decides. I also have a camera and a mic ready for calls.</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">Cool</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">You sound like me now</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">Haha</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">We are looking for a proactive Virtual Assistant who is comfortable working with ChatGPT and has a basic understanding of Python. Our projects involve Vibe Coding and automation tasks, where you will assist with setting up workflows, testing scripts, and documenting processes.This role starts with specific tasks, but we are seeking someone interested in ongoing collaboration as our projects continue to grow.Responsibilities:•	Assist with tasks involving ChatGPT (prompting, fine-tuning, testing outputs).•	Support in organizing and documenting automation workflows.•	Collaborate on Python-based automation (basic knowledge is sufficient, deeper skills are a plus).•	Research and suggest ways to improve workflows.Requirements:•	Experience with ChatGPT or other AI tools.•	Basic knowledge of Python (enough to follow along and assist).•	Organized, detail-oriented, and reliable.•	Strong communication skills in English.•	Willing to complete a short test task to demonstrate skills.Nice to Have:•	Previous VA experience in tech/automation projects.•	Familiarity with APIs and workflow automation tools.What We Offer:•	Opportunity for long-term collaboration.•	Flexible workload with potential to expand responsibilities.•	Chance to grow alongside innovative automation projects.</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">When I get my coffee I'm down for any challenges haha</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">Haha im sipping my coffee just now</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">Thank you for your trust!I’ll make sure to put in my best effort to complete the tasks correctly. I’m excited to get started and I look forward to many more collaborations in the future.</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">Cool</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">Will send instructions latwr</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">Also</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">For doc purposes</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">I send you instructions</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">To your tool you built ok</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">got it</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">As my team is there</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                    <div class="message outgoing">
+                        <div class="message-sender">unknown</div>
+                        <div class="message-text">We have received Luka's dispute for contract 41764221 and our team has provided a resolution.</div>
+                        <div class="timestamp">16:37</div>
+                    </div>
+            
+                </div>
+            </div>
+        
+            
+            <div class="ai-suggestions-section">
+                <h3>🤖 AI Suggestions</h3>
+        
+                    <div class="ai-suggestion-card">
+                        <div class="suggestion-info">
+                            <span class="phase-badge">Phase: initial_response</span>
+                            <span class="confidence-badge">4.9%</span>
+                        </div>
+                
+                        <div class="response-option template-response" onclick="copyResponse('Thank you for reaching out! I\'m very interested. Could you tell me more about the project?')">
+                            <strong>📝 Template Response</strong>
+                            <p>Thank you for reaching out! I'm very interested. Could you tell me more about the project?</p>
+                        </div>
+                    
+                        <div class="response-option ai-response" onclick="copyResponse('I want to do this work in a timely manner, ʻI don\'t want you being stuck with this type of work for any length of time
+I would love to hear your feedb')">
+                            <strong>🤖 AI Generated Response</strong>
+                            <p>I want to do this work in a timely manner, ʻI don't want you being stuck with this type of work for any length of time
+I would love to hear your feedb</p>
+                        </div>
+                    
+                    </div>
+                
+            </div>
+        
+        </div>
+    </div>
+    
+    <script>
+        // Auto-scroll to bottom of chat
+        const messagesContainer = document.querySelector('.messages-container');
+        if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+        
+        function continueWorkflow() {
+            // Trigger N8N workflow via webhook or HTTP call
+            fetch('http://localhost:5678/webhook/continue-chat-workflow', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'continue_chat_workflow',
+                    timestamp: new Date().toISOString()
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Workflow triggered:', data);
+                // Show feedback
+                const btn = document.querySelector('.continue-btn');
+                btn.textContent = '✅ Workflow Started';
+                setTimeout(() => {
+                    btn.textContent = '🔄 Continue Workflow';
+                }, 2000);
+            })
+            .catch(error => {
+                console.error('Error triggering workflow:', error);
+                const btn = document.querySelector('.continue-btn');
+                btn.textContent = '❌ Error';
+                setTimeout(() => {
+                    btn.textContent = '🔄 Continue Workflow';
+                }, 2000);
+            });
+        }
+        
+        function copyResponse(text) {
+            // Copy text to clipboard
+            navigator.clipboard.writeText(text).then(() => {
+                // Show feedback
+                console.log('Response copied to clipboard');
+                
+                // Create temporary notification
+                const notification = document.createElement('div');
+                notification.textContent = '✅ Copied to clipboard!';
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 25px;
+                    font-weight: bold;
+                    z-index: 1000;
+                    box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3);
+                    transform: translateX(100%);
+                    transition: transform 0.3s ease;
+                `;
+                document.body.appendChild(notification);
+                
+                // Animate in
+                setTimeout(() => {
+                    notification.style.transform = 'translateX(0)';
+                }, 10);
+                
+                // Remove after 3 seconds
+                setTimeout(() => {
+                    notification.style.transform = 'translateX(100%)';
+                    setTimeout(() => {
+                        document.body.removeChild(notification);
+                    }, 300);
+                }, 3000);
+                
+            }).catch(err => {
+                console.error('Failed to copy text: ', err);
+                // Fallback for older browsers
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                // Show fallback notification
+                alert('Text copied to clipboard!');
+            });
+        }
+    </script>
+</body>
+</html>
